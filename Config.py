@@ -3,6 +3,8 @@
 # @Description :
 from albumentations import Compose, OneOf, Normalize
 from albumentations import HorizontalFlip, VerticalFlip, RandomRotate90, RandomCrop
+import platform
+
 LoggingConfig = dict(
     path="log.txt"
 )
@@ -32,7 +34,7 @@ DataLoaderConfig = dict(
             #           std=(58.395, 57.12, 57.375),
             #           max_pixel_value=1, always_apply=True),
         ]),
-        batch_size=2,
+        batch_size=3 if platform.system().lower() == 'windows' else 9,
         num_workers=8,
         drop_last=True,  # whether abandon the samples out of batch
         shuffle=True,  # whether to choose the samples in random order

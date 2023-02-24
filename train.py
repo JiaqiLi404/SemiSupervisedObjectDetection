@@ -21,6 +21,7 @@ def evaluate():
             loss = loss_fun(predict_mask, real_mask)
             valid_loss += loss.item()
         print("valid_loss:", valid_loss / len(validDataLoader))
+    # torch.cuda.empty_cache()
     return valid_loss / len(validDataLoader)
 
 
