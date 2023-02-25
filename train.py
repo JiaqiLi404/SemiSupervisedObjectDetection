@@ -21,7 +21,7 @@ def evaluate():
             loss = loss_fun(predict_mask, real_mask)
             valid_loss += loss.item()
         print("valid_loss:", valid_loss / len(validDataLoader))
-        print("lr:",optimizer.param_groups[0]['lr'])
+        print("lr:", optimizer.param_groups[0]['lr'])
     # torch.cuda.empty_cache()
     return valid_loss / len(validDataLoader)
 
@@ -45,8 +45,8 @@ if __name__ == '__main__':
     ENCODER_WEIGHTS = 'imagenet'
     ACTIVATION = 'softmax2d'  # could be None for logits or 'softmax2d' for multiclass segmentation
     DEVICE = 'cuda'
-    model = smp.UnetPlusPlus(encoder_name=ENCODER, encoder_weights=ENCODER_WEIGHTS, activation=ACTIVATION, classes=7,
-                             in_channels=3)
+    model = smp.Unet(encoder_name=ENCODER, encoder_weights=ENCODER_WEIGHTS, activation=ACTIVATION, classes=7,
+                     in_channels=3)
     # model.half()
     model.cuda()
     preprocessing_fn = smp.encoders.get_preprocessing_fn(ENCODER, ENCODER_WEIGHTS)
@@ -54,13 +54,14 @@ if __name__ == '__main__':
 
     # optimizer = torch.optim.SGD(params=model.parameters(), momentum=0.9, weight_decay=0.0001, lr=0.01)
     optimizer = torch.optim.Adam(params=model.parameters(), weight_decay=0.001, lr=0.0001)
-    lambda_func = lambda step: max((1 - step / 5000) ** 0.9,1e-3)
+    max_step = 5000
+    lambda_func = lambda step: (1 - step / max_step) ** 0.9 if step < max_step else 1e-3
     scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lambda_func)
 
-    grad_batch = 2
+    grad_batch = 1
     best_loss = 1
 
-    for i in range(0, 80):
+    for i in range(0, 100):
         print('\nEpoch: {}'.format(i))
         eval_loss = evaluate()
         if eval_loss < best_loss:
