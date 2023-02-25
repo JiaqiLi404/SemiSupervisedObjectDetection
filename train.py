@@ -21,6 +21,7 @@ def evaluate():
             loss = loss_fun(predict_mask, real_mask)
             valid_loss += loss.item()
         print("valid_loss:", valid_loss / len(validDataLoader))
+        print("lr:",optimizer.param_groups[0]['lr'])
     # torch.cuda.empty_cache()
     return valid_loss / len(validDataLoader)
 
@@ -42,7 +43,7 @@ if __name__ == '__main__':
     # ENCODER = 'se_resnext50_32x4d'
     ENCODER = 'resnet50'
     ENCODER_WEIGHTS = 'imagenet'
-    ACTIVATION = None  # could be None for logits or 'softmax2d' for multiclass segmentation
+    ACTIVATION = 'softmax2d'  # could be None for logits or 'softmax2d' for multiclass segmentation
     DEVICE = 'cuda'
     model = smp.UnetPlusPlus(encoder_name=ENCODER, encoder_weights=ENCODER_WEIGHTS, activation=ACTIVATION, classes=7,
                              in_channels=3)
@@ -51,15 +52,15 @@ if __name__ == '__main__':
     preprocessing_fn = smp.encoders.get_preprocessing_fn(ENCODER, ENCODER_WEIGHTS)
     loss_fun = myLoss.SegmentationLoss(7, loss_type='dice')
 
-    optimizer = torch.optim.SGD(params=model.parameters(), momentum=0.9, weight_decay=0.0001, lr=0.01)
-    # optimizer = torch.optim.Adam(params=model.parameters(), weight_decay=0.001, lr=0.001)
-    lambda_func = lambda step: (1 - step / 20000) ** 0.9
+    # optimizer = torch.optim.SGD(params=model.parameters(), momentum=0.9, weight_decay=0.0001, lr=0.01)
+    optimizer = torch.optim.Adam(params=model.parameters(), weight_decay=0.001, lr=0.0001)
+    lambda_func = lambda step: max((1 - step / 5000) ** 0.9,1e-3)
     scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lambda_func)
 
     grad_batch = 2
     best_loss = 1
 
-    for i in range(0, 50):
+    for i in range(0, 80):
         print('\nEpoch: {}'.format(i))
         eval_loss = evaluate()
         if eval_loss < best_loss:
@@ -74,7 +75,7 @@ if __name__ == '__main__':
                 img = img.transpose(3, 1).contiguous()
                 real_mask = mask['ind_mask'].to(device="cuda:0", dtype=torch.float32)
             predict_mask = model(img)
-            predict_mask = predict_mask.softmax(dim=1)
+            # predict_mask = predict_mask.softmax(dim=1)
             # print(real_mask.shape, predict_mask.shape)
             loss = loss_fun(predict_mask, real_mask)
             loss.backward()
