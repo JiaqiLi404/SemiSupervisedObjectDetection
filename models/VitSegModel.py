@@ -59,6 +59,7 @@ class VitSegModel(nn.Module):
 
         # train & decrease loss
         self.train_from_loss(loss)
+        return loss
 
     def train_from_loss(self, loss):
         self.optimizer.zero_grad()
