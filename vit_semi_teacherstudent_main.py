@@ -13,9 +13,14 @@ import time
 
 from models.VitSegModel import VitSegModel
 
+PESUDO_MAKS_THRESHOLD = 0.8
+CONFIDENT_THRESHOLD = 0.8
 
 def threshold_pseudo_masks(masks):
-    return masks
+    confident = torch.where((masks >= PESUDO_MAKS_THRESHOLD) | (masks <= 1-PESUDO_MAKS_THRESHOLD)), 1, 0).sum() / torch.numel(masks)
+    pseudo_mask = torch.as_tensor(masks >= PESUDO_MAKS_THRESHOLD, dtype=torch.int32)
+
+    return confident, pseudo_mask
 
 
 if __name__ == '__main__':
@@ -42,9 +47,10 @@ if __name__ == '__main__':
         for img, _, _, _ in unlabel_dataLoader:
             img = img.to(device="cuda:0", dtype=torch.float32)
             predicted_masks = teacher_model.predict(img)
-            pseudo_masks = threshold_pseudo_masks(predicted_masks)
-            teacher_model.show_mask(img[0], pseudo_masks[0])
-            teacher_model.train_one_epoch(img, pseudo_masks)
+            confident, pseudo_masks = threshold_pseudo_masks(predicted_masks)
+            if confident >= CONFIDENT_THRESHOLD:
+                teacher_model.show_mask(img[0], pseudo_masks[0])
+                teacher_model.train_one_epoch(img, pseudo_masks)
 
         for img, ground_truth, _, _ in label_dataLoader:
             img = img.to(device="cuda:0", dtype=torch.float32)
