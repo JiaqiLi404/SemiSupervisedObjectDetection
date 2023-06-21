@@ -47,12 +47,24 @@ class VitSegModel(nn.Module):
         return mask
 
     def train_one_epoch(self, imgs, masks):
-        loss=0
+        self.model.train()
+        # cuda tensor
+        imgs = imgs.cuda()
+        masks = masks.cuda()
+        masks = masks.unsqueeze(dim=1)
+
+        # calculate loss
+        predict_masks = self.predict(imgs)
+        loss = self.loss_function(predict_masks, masks)
+
+        # train & decrease loss
         self.train_from_loss(loss)
-        pass
 
     def train_from_loss(self, loss):
-        pass
+        self.optimizer.zero_grad()
+        if not torch.isnan(loss): loss.backward()
+        torch.nn.utils.clip_grad_norm_(self.model.parameters(), clip_value=1.2)
+        self.optimizer.step()
 
     def scheduler_step(self):
         self.scheduler.step()
