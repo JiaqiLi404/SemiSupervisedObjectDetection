@@ -126,6 +126,8 @@ class SitesLoader(DataLoader):
             dataset = SitesBingBook(self.config["dataset"], self.config["maskdir"], self.config["transforms"])
         elif flag == 'unlabeled':
             dataset = SitesBingBook(self.config["unlabeledset"], None, self.config["transforms"],has_mask=False)
+        elif flag=='pseudo':
+            dataset = SitesBingBook(self.config["pseudoset"], None, self.config["transforms"], has_mask=False)
         else:
             dataset = SitesBingBook(self.config["evalset"], self.config["maskdir"], self.config["transforms"])
         super(SitesLoader, self).__init__(dataset,

@@ -16,8 +16,8 @@ from models.VitSegModel import VitSegModel
 PESUDO_MAKS_THRESHOLD = 0.7
 CONFIDENT_THRESHOLD = 0.7
 
-supervise_loss_weight = 0.6
-self_supervise_loss_weight = 0.4
+supervise_loss_weight = 0.7
+self_supervise_loss_weight = 0.3
 
 
 def threshold_pseudo_masks(img, masks):
@@ -26,14 +26,17 @@ def threshold_pseudo_masks(img, masks):
     masks_flat = masks_flat.view(N, -1)
     pixel_num = torch.sum(torch.abs(masks_flat), dim=1)
     confidence = torch.where((masks_flat >= PESUDO_MAKS_THRESHOLD) | (masks_flat <= 1 - PESUDO_MAKS_THRESHOLD), 1, 0)
+    # confidence = torch.where((masks_flat >= PESUDO_MAKS_THRESHOLD) | (masks_flat <= 1 - PESUDO_MAKS_THRESHOLD), 1, 0)
     confidence = torch.sum(confidence, dim=1) / torch.numel(masks[0])
-    pseudo_mask = torch.as_tensor(masks >= PESUDO_MAKS_THRESHOLD, dtype=torch.int32)
+
+    pseudo_mask = torch.where((masks >= PESUDO_MAKS_THRESHOLD), 1, 0)
+    # pseudo_mask = torch.as_tensor(masks >= PESUDO_MAKS_THRESHOLD, dtype=torch.int32)
 
     confident_img = []
     confident_mask = []
     confident_predicted = []
     for n in range(N):
-        if pixel_num[n] > 600 and confidence[n] >= CONFIDENT_THRESHOLD:
+        if pixel_num[n] > 1000 and confidence[n] >= CONFIDENT_THRESHOLD:
             confident_img.append(img[n])
             confident_predicted.append(masks[n])
             confident_mask.append(pseudo_mask[n])
@@ -53,7 +56,7 @@ if __name__ == '__main__':
     vis_eval = visdom.Visdom(env='eval')
 
     unlabel_dataLoader = archaeological_georgia_biostyle_dataloader.SitesLoader(config.DataLoaderConfig,
-                                                                                flag="unlabeled")
+                                                                                flag="pseudo")
     label_dataLoader = archaeological_georgia_biostyle_dataloader.SitesLoader(config.DataLoaderConfig, flag="train")
     eval_dataLoader = archaeological_georgia_biostyle_dataloader.SitesLoader(config.DataLoaderConfig, flag="eval")
     print('Labeled data batch amount: ', len(unlabel_dataLoader) + len(label_dataLoader))
@@ -118,7 +121,7 @@ if __name__ == '__main__':
                 img = img.to(device="cuda:0", dtype=torch.float32)
                 real_mask = mask.to(device="cuda:0", dtype=torch.float32)
                 real_mask = real_mask.unsqueeze(1)
-                predict_mask = student_model(img)
+                predict_mask = student_model.predict(img)
                 loss = loss_function(predict_mask, real_mask)
                 valid_loss.append(float(loss.item()))
 
