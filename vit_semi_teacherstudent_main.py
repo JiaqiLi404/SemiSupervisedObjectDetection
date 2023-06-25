@@ -16,15 +16,20 @@ from models.VitSegModel import VitSegModel
 PESUDO_MAKS_THRESHOLD = 0.8
 CONFIDENT_THRESHOLD = 0.8
 
+
 def threshold_pseudo_masks(masks):
-    confident = torch.where((masks >= PESUDO_MAKS_THRESHOLD) | (masks <= 1-PESUDO_MAKS_THRESHOLD)), 1, 0).sum() / torch.numel(masks)
+    confident = torch.where((masks >= PESUDO_MAKS_THRESHOLD) | (masks <= 1 - PESUDO_MAKS_THRESHOLD), 1,
+                            0).sum() / torch.numel(masks)
     pseudo_mask = torch.as_tensor(masks >= PESUDO_MAKS_THRESHOLD, dtype=torch.int32)
 
     return confident, pseudo_mask
 
 
 if __name__ == '__main__':
-    vis = visdom.Visdom(env='plot1')
+    vis_teacher = visdom.Visdom(env='teacher')
+    vis_student = visdom.Visdom(env='student')
+    vis_eval = visdom.Visdom(env='eval')
+
     unlabel_dataLoader = archaeological_georgia_biostyle_dataloader.SitesLoader(config.DataLoaderConfig,
                                                                                 flag="unlabeled")
     label_dataLoader = archaeological_georgia_biostyle_dataloader.SitesLoader(config.DataLoaderConfig, flag="train")
@@ -48,30 +53,35 @@ if __name__ == '__main__':
             img = img.to(device="cuda:0", dtype=torch.float32)
             predicted_masks = teacher_model.predict(img)
             confident, pseudo_masks = threshold_pseudo_masks(predicted_masks)
+            teacher_loss_pseudo = 0
             if confident >= CONFIDENT_THRESHOLD:
-                teacher_model.show_mask(img[0], pseudo_masks[0])
-                teacher_model.train_one_epoch(img, pseudo_masks)
+                teacher_model.show_mask(vis_teacher, img[0], pseudo_masks[0])
+                teacher_loss_pseudo = teacher_model.train_one_epoch(img, pseudo_masks)
+            print('teacher_pseudo_loss:', teacher_loss_pseudo)
 
         for img, ground_truth, _, _ in label_dataLoader:
             img = img.to(device="cuda:0", dtype=torch.float32)
             ground_truth = ground_truth.to(device="cuda:0", dtype=torch.float32)
             ground_truth = ground_truth.unsqueeze(1)
             # train teacher one epoch
-            teacher_model.train_one_epoch(img, ground_truth)
+            teacher_loss_gt = teacher_model.train_one_epoch(img, ground_truth)
             # predict from the teacher
             teacher_predicted_masks = teacher_model.predict(img)
             # predict from the student
             student_predicted_masks = student_model.predict(img)
             # learn from both teacher and ground truth
-            loss = supervise_loss_weight * loss_function(student_predicted_masks, ground_truth) \
-                   + self_supervise_loss_weight * loss_function(student_predicted_masks, teacher_predicted_masks)
+            student_loss = loss_function(student_predicted_masks, ground_truth)
+            self_supervise_loss = loss_function(student_predicted_masks, teacher_predicted_masks)
+            loss = supervise_loss_weight * student_loss + self_supervise_loss_weight * self_supervise_loss
             student_model.train_from_loss(loss)
             epoch_loss.append(loss)
 
             # show results
-            student_model.show_mask(img[0], ground_truth[0])
-            student_model.show_mask(img[0], teacher_predicted_masks[0])
-            student_model.show_mask(img[0], student_predicted_masks[0])
+            student_model.show_mask(vis_student, img[0], ground_truth[0])
+            student_model.show_mask(vis_student, img[0], teacher_predicted_masks[0])
+            student_model.show_mask(vis_student, img[0], student_predicted_masks[0])
+            print('summation loss:{0:.3f} teacher loss: {1:.3f} student loss: {2:.3f} self-supervised loss:{3:.3f}'
+                  .format(loss, teacher_loss_gt, student_loss, self_supervise_loss))
         train_loss = sum(epoch_loss) / len(label_dataLoader)
         teacher_model.scheduler_step()
         student_model.scheduler_step()
@@ -91,8 +101,8 @@ if __name__ == '__main__':
 
                 # show the image to Visdom
                 if len(valid_loss) % 2 == 0:
-                    student_model.show_mask(img[0], real_mask[0])
-                    student_model.show_mask(img[0], predict_mask[0])
+                    student_model.show_mask(vis_eval, img[0], real_mask[0])
+                    student_model.show_mask(vis_eval, img[0], predict_mask[0])
 
         eval_loss = sum(valid_loss) / len(eval_dataLoader)
         fps = len(eval_dataLoader) / (time.time() - s_time)
@@ -109,7 +119,6 @@ if __name__ == '__main__':
             'epoch {0} train_loss: {1:.6f} eval_loss: {2:.6f} fps {3:.2f}'.format(epoch_i, train_loss, eval_loss, fps))
         loss_path_train.append(train_loss)
         loss_path_eval.append(eval_loss)
-
 
     print('**********FINISH**********')
     plt.title('Loss Performance of common ViT')
