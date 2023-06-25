@@ -13,16 +13,38 @@ import time
 
 from models.VitSegModel import VitSegModel
 
-PESUDO_MAKS_THRESHOLD = 0.8
-CONFIDENT_THRESHOLD = 0.8
+PESUDO_MAKS_THRESHOLD = 0.7
+CONFIDENT_THRESHOLD = 0.7
+
+supervise_loss_weight = 0.6
+self_supervise_loss_weight = 0.4
 
 
-def threshold_pseudo_masks(masks):
-    confident = torch.where((masks >= PESUDO_MAKS_THRESHOLD) | (masks <= 1 - PESUDO_MAKS_THRESHOLD), 1,
-                            0).sum() / torch.numel(masks)
+def threshold_pseudo_masks(img, masks):
+    N = masks.size(0)
+    masks_flat = masks.squeeze(dim=1)
+    masks_flat = masks_flat.view(N, -1)
+    pixel_num = torch.sum(torch.abs(masks_flat), dim=1)
+    confidence = torch.where((masks_flat >= PESUDO_MAKS_THRESHOLD) | (masks_flat <= 1 - PESUDO_MAKS_THRESHOLD), 1, 0)
+    confidence = torch.sum(confidence, dim=1) / torch.numel(masks[0])
     pseudo_mask = torch.as_tensor(masks >= PESUDO_MAKS_THRESHOLD, dtype=torch.int32)
 
-    return confident, pseudo_mask
+    confident_img = []
+    confident_mask = []
+    confident_predicted = []
+    for n in range(N):
+        if pixel_num[n] > 600 and confidence[n] >= CONFIDENT_THRESHOLD:
+            confident_img.append(img[n])
+            confident_predicted.append(masks[n])
+            confident_mask.append(pseudo_mask[n])
+    if len(confident_img) != 0:
+        confident_img = torch.stack(confident_img)
+        confident_predicted = torch.stack(confident_predicted)
+        confident_mask = torch.stack(confident_mask)
+    else:
+        confident_img = confident_mask = confident_predicted = None
+
+    return confident_img, confident_mask, confident_predicted, confidence
 
 
 if __name__ == '__main__':
@@ -39,8 +61,6 @@ if __name__ == '__main__':
     teacher_model = VitSegModel()
     student_model = VitSegModel()
     loss_function = myLoss.SegmentationLoss(1, loss_type='dice', activation='none')
-    supervise_loss_weight = 0.6
-    self_supervise_loss_weight = 0.4
 
     loss_path_train = []
     loss_path_eval = []
@@ -52,12 +72,15 @@ if __name__ == '__main__':
         for img, _, _, _ in unlabel_dataLoader:
             img = img.to(device="cuda:0", dtype=torch.float32)
             predicted_masks = teacher_model.predict(img)
-            confident, pseudo_masks = threshold_pseudo_masks(predicted_masks)
+            confident_img, confident_mask, confident_predicted, confidence = \
+                threshold_pseudo_masks(img, predicted_masks)
             teacher_loss_pseudo = 0
-            if confident >= CONFIDENT_THRESHOLD:
-                teacher_model.show_mask(vis_teacher, img[0], pseudo_masks[0])
-                teacher_loss_pseudo = teacher_model.train_one_epoch(img, pseudo_masks)
-            print('teacher_pseudo_loss:', teacher_loss_pseudo)
+            if confident_img is not None:
+                teacher_loss_pseudo = loss_function(confident_predicted, confident_mask)
+                teacher_model.train_from_loss(teacher_loss_pseudo)
+                teacher_model.show_mask(vis_teacher, confident_img[0], confident_predicted[0])
+                teacher_model.show_mask(vis_teacher, confident_img[0], confident_mask[0])
+            print('teacher_pseudo_loss:', float(teacher_loss_pseudo))
 
         for img, ground_truth, _, _ in label_dataLoader:
             img = img.to(device="cuda:0", dtype=torch.float32)
@@ -81,7 +104,7 @@ if __name__ == '__main__':
             student_model.show_mask(vis_student, img[0], teacher_predicted_masks[0])
             student_model.show_mask(vis_student, img[0], student_predicted_masks[0])
             print('summation loss:{0:.3f} teacher loss: {1:.3f} student loss: {2:.3f} self-supervised loss:{3:.3f}'
-                  .format(loss, teacher_loss_gt, student_loss, self_supervise_loss))
+                  .format(float(loss), float(teacher_loss_gt), float(student_loss), float(self_supervise_loss)))
         train_loss = sum(epoch_loss) / len(label_dataLoader)
         teacher_model.scheduler_step()
         student_model.scheduler_step()

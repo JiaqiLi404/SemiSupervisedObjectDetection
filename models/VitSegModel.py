@@ -72,7 +72,7 @@ class VitSegModel(nn.Module):
 
     def show_mask(self,vis, img, mask):
         mask_img = img.cpu().numpy()
-        mask = mask.cpu().numpy()[0]
+        mask = mask.cpu().detach().numpy()[0]
         mask_img[0, :, :] = mask
         vis.image(mask_img)
         # mask_img = mask_img.transpose((1, 2, 0))
