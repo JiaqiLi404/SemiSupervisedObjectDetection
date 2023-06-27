@@ -20,6 +20,7 @@ DataLoaderConfig = dict(
     dataset="E:\\Research\\Datas\\AreialImage\\ArchaeologicalSitesDetection\\georgia_cleaned_bing_train",
     evalset="E:\\Research\\Datas\\AreialImage\\ArchaeologicalSitesDetection\\georgia_cleaned_bing_test",
     unlabeledset="E:\\Research\\Datas\\AreialImage\\ArchaeologicalSitesDetection\\new_images",
+    pseudoset="E:\\Research\\Datas\\AreialImage\\ArchaeologicalSitesDetection\\pseudo",
     maskdir="E:\\Research\\Datas\\AreialImage\\ArchaeologicalSitesDetection\\masks",
     transforms=Compose([
         RandomCrop(500, 500),

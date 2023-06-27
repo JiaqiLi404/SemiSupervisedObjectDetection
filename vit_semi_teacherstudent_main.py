@@ -18,7 +18,7 @@ CONFIDENT_THRESHOLD = 0.7
 
 supervise_loss_weight = 0.7
 self_supervise_loss_weight = 0.3
-
+# python -m visdom.server
 
 def threshold_pseudo_masks(img, masks):
     N = masks.size(0)
