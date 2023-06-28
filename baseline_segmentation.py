@@ -13,7 +13,11 @@ import cv2
 
 
 # python -m visdom.server
-
+'''This function is used for baseline model pediction.
+   The output will be two images illustrating the ground truth and the prediction 
+   Input: model_name: string indicating the model, such as 'DeepLabV3+'
+          weight_name: string indicating the parameter, just used to check the pretrained model
+''' 
 def predict(model_name, weight_name):
     model = model_ensemble[model_name]
     model.cuda()
@@ -56,7 +60,7 @@ def predict(model_name, weight_name):
             predict_mask_img = cv2.cvtColor(predict_mask_img, cv2.COLOR_RGB2BGR)
             cv2.imwrite(os.path.join('figures', 'sample ' + str(i) + " predict.png"), 255 * predict_mask_img)
 
-
+# return the average validation loss
 def evaluate(model, loss_fun):
     with torch.no_grad():
         model.eval()
