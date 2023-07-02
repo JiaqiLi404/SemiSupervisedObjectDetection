@@ -6,13 +6,14 @@ import torch
 
 
 class EncoderDecoder(nn.Module):
-    def __init__(self, encoder, decoder, froze_encoder=False, vit_encoder=True):
+    def __init__(self, encoder, decoder, froze_encoder=False, vit_encoder=True, device="cuda:0"):
         super(EncoderDecoder, self).__init__()
         self.encoder = encoder
         self.decoder = decoder
         self.vit_encoder = vit_encoder
         self.h_patch_num = self.decoder.img_size[0] // self.decoder.patch_size
         self.w_patch_num = self.decoder.img_size[1] // self.decoder.patch_size
+        self.device = device
 
         # frozen the pre-trained model
         if froze_encoder:
@@ -31,7 +32,7 @@ class EncoderDecoder(nn.Module):
             # combine the clstoken with patchtokens
             x_temp = self.encoder.forward_features(x)
             x = torch.zeros((x_temp["x_norm_patchtokens"].shape[0], x_temp["x_norm_patchtokens"].shape[1] + 1,
-                             x_temp["x_norm_patchtokens"].shape[2])).cuda()
+                             x_temp["x_norm_patchtokens"].shape[2])).to(self.device)
             x[:, 0] = x_temp["x_norm_clstoken"]
             x[:, 1:] = x_temp["x_norm_patchtokens"]
         else:
@@ -60,7 +61,7 @@ class EncoderDecoder(nn.Module):
         # combine the clstoken with patchtokens
         x_temp = self.encoder.forward_features(x)
         x = torch.zeros((x_temp["x_norm_patchtokens"].shape[0], x_temp["x_norm_patchtokens"].shape[1] + 1,
-                         x_temp["x_norm_patchtokens"].shape[2])).cuda()
+                         x_temp["x_norm_patchtokens"].shape[2])).to(self.device)
         x[:, 0] = x_temp["x_norm_clstoken"]
         x[:, 1:] = x_temp["x_norm_patchtokens"]
         return x
