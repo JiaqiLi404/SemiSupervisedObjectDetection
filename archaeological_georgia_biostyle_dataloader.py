@@ -140,7 +140,7 @@ class SitesBingBook(Dataset):
 
 
 class SitesLoader(DataLoader):
-    def __init__(self, config, dataset=None, flag="train", feature_extractor=None):
+    def __init__(self, config, dataset=None, flag="train"):
         self.config = config
         self.flag = flag
         if dataset:

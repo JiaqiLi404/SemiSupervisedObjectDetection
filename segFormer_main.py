@@ -25,14 +25,17 @@ def Prediction():
     # feature_extractor = SegformerFeatureExtractor(align=False, reduce_zero_label=False)
     feature_extractor = SegformerFeatureExtractor.from_pretrained(pretained_model)
     unlabel_dataLoader = archaeological_georgia_biostyle_dataloader.SitesLoader(config.DataLoaderConfig,
-                                                                                flag="unlabeled", feature_extractor=feature_extractor)
+                                                                                flag="unlabeled")
     model = SegFormerModel() # with pre-trained weight
     model.eval()
     with torch.no_gard():
         dataPatches = 0
         for img, _, _, _ in unlabel_dataLoader:
-            img = img.to(device=device)
-            predict_mask = model.predict(img=img)# logits are of shape (batch_size, num_labels, height/4, width/4)
+            encoded_inputs = feature_extractor(img, return_tensors="pt")
+            encoded_img = encoded_inputs["pixel_values"]
+            encoded_img = encoded_img.to(device=device)
+
+            predict_mask = model.predict(img=encoded_img)# logits are of shape (batch_size, num_labels, height/4, width/4)
             dataPatches += 1
             if dataPatches % visdom_display_freq == 0:
                 model.show_mask(vis_pred, img[0], None, title="Raw Image {0}".format(dataPatches))
@@ -128,11 +131,11 @@ def Hyperparameter_Tuning(lr=[1e-5], weight_decay=[5e-5], scheduler=[0.97]):
     pretained_model = "nvidia/mit-b5"
     feature_extractor = SegformerFeatureExtractor.from_pretrained(pretained_model)
 
-    label_dataset = archaeological_georgia_biostyle_dataloader.SitesBingBook(config.DataLoaderConfig["dataset"], config.DataLoaderConfig["maskdir"], config.DataLoaderConfig["transforms"], feature_extractor=feature_extractor)
+    label_dataset = archaeological_georgia_biostyle_dataloader.SitesBingBook(config.DataLoaderConfig["dataset"], config.DataLoaderConfig["maskdir"], config.DataLoaderConfig["transforms"])
     train_data_num = math.floor(len(label_dataset) * 0.8)
     train_dataset, validation_dataset = torch.utils.data.random_split(label_dataset, [train_data_num, len(label_dataset)-train_data_num])
-    train_dataloader = archaeological_georgia_biostyle_dataloader.SitesLoader(config.DataLoaderConfig, dataset=train_dataset, flag="train", feature_extractor=feature_extractor)
-    validation_dataloader = archaeological_georgia_biostyle_dataloader.SitesLoader(config.DataLoaderConfig, dataset=validation_dataset, flag="train", feature_extractor=feature_extractor)
+    train_dataloader = archaeological_georgia_biostyle_dataloader.SitesLoader(config.DataLoaderConfig, dataset=train_dataset, flag="train")
+    validation_dataloader = archaeological_georgia_biostyle_dataloader.SitesLoader(config.DataLoaderConfig, dataset=validation_dataset, flag="train")
 
     print('Training data batch amount: {0}, Validation data batch amount: {1}'.format(len(train_dataloader), len(validation_dataloader)))
 
