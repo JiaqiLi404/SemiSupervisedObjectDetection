@@ -2,7 +2,7 @@ import os
 import models.Loss as myLoss
 import torch.nn as nn
 import torch
-from transformers import SegformerForSemanticSegmentation,SegformerModel
+from transformers import SegformerForSemanticSegmentation, SegformerModel
 
 
 class SegFormerModel(nn.Module):
@@ -15,6 +15,7 @@ class SegFormerModel(nn.Module):
                                                                       num_labels=len(id2label), id2label=id2label,
                                                                       label2id=label2id,
                                                                       reshape_last_stage=True)
+        self.model.config.output_hidden_states = True
         self.model.to(device)
         self.device = device
 

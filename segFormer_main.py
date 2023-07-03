@@ -12,10 +12,6 @@ import math
 
 pretained_model = "nvidia/mit-b5"
 visdom_display_freq = 5  # send image to visdom every 5 epoch
-vis_train = visdom.Visdom(env="SegFormer_Train")
-vis_eval = visdom.Visdom(env="SegFormer_Evaluation")
-vis_pred = visdom.Visdom(env="SegFormer_Prediction")
-
 
 # python -m visdom.server
 
@@ -169,6 +165,9 @@ def Hyperparameter_Tuning(lr=[1e-5], weight_decay=[5e-5], scheduler=[0.97]):
 
 if __name__ == '__main__':
     device = "cuda:0"
+    vis_train = visdom.Visdom(env="SegFormer_Train")
+    vis_eval = visdom.Visdom(env="SegFormer_Evaluation")
+    vis_pred = visdom.Visdom(env="SegFormer_Prediction")
     # feature_extractor = SegformerFeatureExtractor(align=False, reduce_zero_label=False)
 
     best_hyperparameters = {
