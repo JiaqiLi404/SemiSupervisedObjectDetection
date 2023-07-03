@@ -1,0 +1,11 @@
+albumentations
+matplotlib
+numpy
+scikit-image
+scipy
+segmentation-models-pytorch
+torch
+torchaudio
+torchvision
+transformers
+visdom
