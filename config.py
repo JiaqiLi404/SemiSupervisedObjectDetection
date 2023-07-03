@@ -9,8 +9,8 @@ LoggingConfig = dict(
     path="log.txt"
 )
 ModelConfig = dict(
-    imgh=448,
-    imgw=448,
+    imgh=512,
+    imgw=512,
     lr=1e-5,
     weight_decay=5e-5,
     epoch_num=50,

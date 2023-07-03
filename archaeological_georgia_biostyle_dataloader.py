@@ -4,13 +4,10 @@
 from torch.utils.data import Dataset
 import glob
 import os
-from skimage.transform import resize
 from skimage.io import imread
 from torch.utils.data import DataLoader
-import torch
 from collections import OrderedDict
 import numpy as np
-import logging
 
 COLOR_MAP = OrderedDict(
     Background=(255, 255, 255),
