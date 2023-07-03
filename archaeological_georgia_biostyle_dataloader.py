@@ -50,7 +50,6 @@ class SitesBingBook(Dataset):
                 self.id_list.append(os.path.split(fp)[-1][:-4])
                 self.unlabeled =True
         self.transforms = transforms
-        self.feature_extractor = None
 
     def __getitem__(self, idx):
         file_id = self.id_list[idx]
@@ -91,7 +90,7 @@ class SitesBingBook(Dataset):
                     bing_image = blob['image']
                     bing_mask_image = blob['mask']
                     bing_mask_image = (bing_mask_image - np.min(bing_mask_image)) / (
-                                np.max(bing_mask_image) - np.min(bing_mask_image))
+                            np.max(bing_mask_image) - np.min(bing_mask_image))
                 if self.has_book:
                     book_mask_image = book_mask_image[:, :, 0]
                     blob = self.transforms(image=book_image, mask=book_mask_image)
@@ -107,31 +106,11 @@ class SitesBingBook(Dataset):
                     blob = self.transforms(image=book_image)
                     book_image = blob['image']
 
-        if self.feature_extractor is not None:
-            if self.has_mask:
-                if self.has_bing:
-                    print('before', bing_image.shape)
-                    encoded_inputs = self.feature_extractor(bing_image, bing_mask_image, return_tensors="pt")
-                    bing_image = encoded_inputs["pixel_values"][0]
-                    print('after', bing_image.shape)
-                    bing_mask_image = encoded_inputs["labels"][0]
-                if self.has_book:
-                    encoded_inputs = self.feature_extractor(book_image, book_mask_image, return_tensors="pt")
-                    book_image = encoded_inputs["pixel_values"][0]
-                    book_mask_image = encoded_inputs["labels"][0]
-            else:
-                if self.has_bing:
-                    encoded_inputs = self.feature_extractor(bing_image, return_tensors="pt")
-                    bing_image = encoded_inputs["pixel_values"][0]
-                if self.has_book:
-                    encoded_inputs = self.feature_extractor(book_image, return_tensors="pt")
-                    book_image = encoded_inputs["pixel_values"][0]
-        else: 
-            # to C,W,H
-            if self.has_bing:
-                bing_image = np.rollaxis(bing_image, 2, 0)
-            if self.has_book:
-                book_image = np.rollaxis(book_image, 2, 0)
+        # to C,W,H
+        if self.has_bing:
+            bing_image = np.rollaxis(bing_image, 2, 0)
+        if self.has_book:
+            book_image = np.rollaxis(book_image, 2, 0)
 
         return bing_image, bing_mask_image, book_image, book_mask_image
 
