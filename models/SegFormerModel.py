@@ -17,7 +17,7 @@ class SegFormerModel(nn.Module):
         self.device = device
 
         if pretrain_weight:
-            self.model.load_state_dict(
+            self.load_state_dict(
                 torch.load(os.path.join('checkpoints', pretrain_weight), map_location=torch.device(device)))
             print("Pretrained model loaded")
 
@@ -38,7 +38,7 @@ class SegFormerModel(nn.Module):
             mask = mask.to(self.device, dtype=torch.int64)
         outputs = self.model(pixel_values=img,
                              labels=mask)  # logits are of shape (batch_size, num_labels, height/4, width/4)
-        logits = outputs.logits.cpu()
+        logits = outputs.logits
         size = list(img.shape)
 
         # First, rescale logits to original image size
@@ -49,7 +49,7 @@ class SegFormerModel(nn.Module):
 
         # Second, apply argmax on the class dimension
         # upsampled_logits = upsampled_logits.argmax(dim=1)
-
+        upsampled_logits = self.activation_fn(upsampled_logits)
         if mask is None:
             return upsampled_logits
         return upsampled_logits, outputs.loss
@@ -68,7 +68,7 @@ class SegFormerModel(nn.Module):
             masks = masks.to(self.device, dtype=torch.int64)
             outputs = self.model(pixel_values=imgs,
                                  labels=masks)  # logits are of shape (batch_size, num_labels, height/4, width/4)
-            logits = outputs.logits.cpu()
+            logits = outputs.logits
             size = list(imgs.shape)
 
             # First, rescale logits to original image size

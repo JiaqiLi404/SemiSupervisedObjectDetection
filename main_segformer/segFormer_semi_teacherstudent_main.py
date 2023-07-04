@@ -73,11 +73,12 @@ def train(pretrain_weight, teacher_lr, student_lr, weight_decay, scheduler, epoc
         student_model.train()
         image_used = 0
         for img, _, _, _ in unlabel_dataLoader:
-            img = img.to(device=device, dtype=torch.float32)
-            predicted_masks = teacher_model.predict(img)
-            confident_img, confident_mask, confident_predicted, confidence = \
-                threshold_pseudo_masks(img, predicted_masks)
-            teacher_loss_pseudo = 0
+            with torch.no_grad():
+                img = img.to(device=device, dtype=torch.float32)
+                predicted_masks = teacher_model.predict(img)
+                confident_img, confident_mask, confident_predicted, confidence = \
+                    threshold_pseudo_masks(img, predicted_masks)
+                teacher_loss_pseudo = 0
             if confident_img is not None:
                 image_used += confident_img.size(0)
                 confident_mask=confident_mask.squeeze(1)
@@ -220,7 +221,7 @@ if __name__ == '__main__':
         "scheduler": None
     }
     for (_t_lr, _s_lr, _weight_decay, _scheduler) in hyperparameters_sets[:9]:
-        loss = train(None, _t_lr, _s_lr, _weight_decay, _scheduler, epochs=20)
+        loss = train('segFormer_baseline_epoch_20_train_0.133_eval_0.168_fps_2.07.pth', _t_lr, _s_lr, _weight_decay, _scheduler, epochs=20)
         print(
             "    Model loss (hyperparameter tunning) for teacher_lr={0}, tstudent_lr={1}, weight_decay={2}, scheduler={3}: {4:.4f}".format(
                 _t_lr, _s_lr, _weight_decay, _scheduler, loss))
