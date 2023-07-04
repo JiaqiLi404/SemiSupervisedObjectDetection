@@ -10,14 +10,12 @@ import visdom
 import matplotlib.pyplot as plt
 import time
 from Utils import product
+import math
 
 from models.SegFormerModel import SegFormerModel as SegModel
 
 PESUDO_MAKS_THRESHOLD = 0.7
 CONFIDENT_THRESHOLD = 0.7
-
-supervise_loss_weight = 0.7
-self_supervise_loss_weight = 0.3
 
 
 # python -m visdom.server
@@ -54,7 +52,8 @@ def threshold_pseudo_masks(img, masks):
     return confident_img, confident_mask, confident_predicted, confidence
 
 
-def train(pretrain_weight, teacher_lr, student_lr, weight_decay, scheduler, epochs=config.ModelConfig['epoch_num'],
+def train(pretrain_weight, teacher_lr, student_lr, weight_decay, scheduler, this_eval_dataloader, supervise_weight,
+          epochs=config.ModelConfig['epoch_num'],
           save_checkpoints=False, plot_loss=False):
     print('**************** Train *******************')
     print('teacher_lr: {0} student_lr: {1}'.format(teacher_lr, student_lr))
@@ -81,7 +80,7 @@ def train(pretrain_weight, teacher_lr, student_lr, weight_decay, scheduler, epoc
                 teacher_loss_pseudo = 0
             if confident_img is not None:
                 image_used += confident_img.size(0)
-                confident_mask=confident_mask.squeeze(1)
+                confident_mask = confident_mask.squeeze(1)
                 teacher_loss_pseudo, confident_predicted = teacher_model.train_one_epoch(confident_img, confident_mask)
                 teacher_model.show_mask(vis_teacher, confident_img[0], confident_predicted[0],
                                         title="Teacher Predict epoch{0}".format(epoch_i))
@@ -103,20 +102,22 @@ def train(pretrain_weight, teacher_lr, student_lr, weight_decay, scheduler, epoc
             # predict from the student
             student_predicted_masks, student_loss = student_model.predict(img, ground_truth)
             # learn from both teacher and ground truth
-            self_supervise_loss = student_model.loss_function(student_predicted_masks, teacher_predicted_masks)
-            loss = supervise_loss_weight * student_loss + self_supervise_loss_weight * self_supervise_loss
+
+            self_supervise_loss = l1_loss_func(student_predicted_masks, teacher_predicted_masks)
+            loss = supervise_weight * student_loss + (1 - supervise_weight) * self_supervise_loss
             student_model.train_from_loss(loss)
             epoch_loss.append(float(loss.item()))
             epoch_loss_teacher.append(float(teacher_loss_gt.item()))
 
             # show results
-            student_model.show_mask(vis_student, img[0], ground_truth[0], title="Ground Truth")
-            student_model.show_mask(vis_student, img[0], teacher_predicted_masks[0],
-                                    title="Teacher Predict (train) epoch{0}".format(epoch_i))
-            student_model.show_mask(vis_student, img[0], student_predicted_masks[0],
-                                    title="Student Predict (train) epoch{0}".format(epoch_i))
-            print('summation loss:{0:.3f} teacher loss: {1:.3f} student loss: {2:.3f} self-supervised loss:{3:.3f}'
-                  .format(float(loss), float(teacher_loss_gt), float(student_loss), float(self_supervise_loss)))
+            if len(epoch_loss) % 4 == 0:
+                student_model.show_mask(vis_student, img[0], ground_truth[0], title="Ground Truth")
+                student_model.show_mask(vis_student, img[0], teacher_predicted_masks[0],
+                                        title="Teacher Predict (train) epoch{0}".format(epoch_i))
+                student_model.show_mask(vis_student, img[0], student_predicted_masks[0],
+                                        title="Student Predict (train) epoch{0}".format(epoch_i))
+                print('summation loss:{0:.3f} teacher loss: {1:.3f} student loss: {2:.3f} self-supervised loss:{3:.3f}'
+                      .format(float(loss), float(teacher_loss_gt), float(student_loss), float(self_supervise_loss)))
 
         train_loss = sum(epoch_loss) / len(label_dataLoader)
         train_loss_teacher = sum(epoch_loss_teacher) / len(label_dataLoader)
@@ -130,17 +131,14 @@ def train(pretrain_weight, teacher_lr, student_lr, weight_decay, scheduler, epoc
         with torch.no_grad():
             valid_loss = []
             valid_loss_teacher = []
-            for img, mask, _, _ in eval_dataLoader:
+            for img, mask, _, _ in this_eval_dataloader:
                 img = img.to(device=device, dtype=torch.float32)
                 real_mask = mask.to(device=device, dtype=torch.float32)
-                real_mask = real_mask.unsqueeze(1)
-                predict_mask = student_model.predict(img)
-                loss = student_model.loss_function(predict_mask, real_mask)
-                valid_loss.append(float(loss.item()))
 
-                predict_mask_teacher = teacher_model.predict(img)
-                loss_teacher = student_model.loss_function(predict_mask_teacher, real_mask)
-                valid_loss_teacher.append(float(loss_teacher.item()))
+                teacher_loss, predict_mask_teacher = teacher_model.eval_one_epoch(imgs=img, masks=real_mask)
+                valid_loss_teacher.append(float(teacher_loss.item()))
+                student_loss, predict_mask = student_model.eval_one_epoch(imgs=img, masks=real_mask)
+                valid_loss.append(float(student_loss.item()))
 
                 # show the image to Visdom
                 if len(valid_loss) % 2 == 0:
@@ -155,15 +153,28 @@ def train(pretrain_weight, teacher_lr, student_lr, weight_decay, scheduler, epoc
         fps = len(eval_dataLoader) / (time.time() - s_time)
 
         # checkpoint
-        if save_checkpoints and eval_loss < best_loss:
+        if eval_loss < best_loss:
             best_loss = eval_loss
-            torch.save(student_model.state_dict(),
-                       os.path.join('checkpoints',
-                                    'self-pseudo vit-seg epoch {0} train {1:.3f} eval {2:.3f} fps {3:.2f}.pth'
-                                    .format(epoch_i, train_loss, best_loss, fps)))
+            if save_checkpoints:
+                torch.save(student_model.state_dict(), os.path.join('checkpoints',
+                                                                    'self-pseudo seg-former student epoch {0} train {1:.3f} eval {2:.3f} fps {3:.2f}.pth'
+                                                                    .format(epoch_i, train_loss, best_loss, fps)))
+        if eval_loss_teacher < best_loss:
+            best_loss = eval_loss_teacher
+            if save_checkpoints:
+                torch.save(teacher_model.state_dict(), os.path.join('checkpoints',
+                                                                    'self-pseudo seg-former teacher epoch {0} train {1:.3f} eval {2:.3f} fps {3:.2f}.pth'
+                                                                    .format(epoch_i, train_loss, best_loss, fps)))
 
         print(
-            'epoch {0} train_loss: {1:.6f} eval_loss: {2:.6f} fps {3:.2f}'.format(epoch_i, train_loss, eval_loss, fps))
+            'epoch {0} train_loss: {1:.6f} eval_loss: {2:.6f} teacher_loss:{3:.6f} teacher_eval_loss:{4:.6f} fps {5:.2f}'
+            .format(
+                epoch_i,
+                train_loss,
+                eval_loss,
+                train_loss_teacher,
+                eval_loss_teacher,
+                fps))
         loss_path_train.append(train_loss)  # .cpu().detach()
         loss_path_eval.append(eval_loss)
         loss_path_train_teacher.append(train_loss_teacher)
@@ -171,26 +182,36 @@ def train(pretrain_weight, teacher_lr, student_lr, weight_decay, scheduler, epoc
 
     if plot_loss:
         print('**********FINISH**********')
-        plt.title('Loss Performance of common ViT (Student)')
+        plt.title('Loss Performance of SegFormer-Pseudo (Student)')
         plt.xlabel('epoch')
         plt.ylabel('loss')
         plt.ylim((0, 1))
-        plt.plot(range(config.ModelConfig['epoch_num']), loss_path_train, color='blue', label='train')
-        plt.plot(range(config.ModelConfig['epoch_num']), loss_path_eval, color='yellow', label='eval')
+        plt.plot(range(epochs), loss_path_train, color='blue', label='train')
+        plt.plot(range(epochs), loss_path_eval, color='yellow', label='eval')
         plt.legend()
-        plt.savefig(os.path.join('figures', 'Loss Performance of common ViT Student.png'))
+        plt.savefig(os.path.join('figures', 'Loss Performance of SegFormer-Pseudo Student.png'))
         plt.show()
 
-        plt.clf()
-
-        plt.title('Loss Performance of common ViT (Teacher)')
+        plt.title('Loss Performance of SegFormer-Pseudo (Teacher)')
         plt.xlabel('epoch')
         plt.ylabel('loss')
         plt.ylim((0, 1))
-        plt.plot(range(config.ModelConfig['epoch_num']), loss_path_train_teacher, color='blue', label='train')
-        plt.plot(range(config.ModelConfig['epoch_num']), loss_path_eval_teacher, color='yellow', label='eval')
+        plt.plot(range(epochs), loss_path_train_teacher, color='blue', label='train')
+        plt.plot(range(epochs), loss_path_eval_teacher, color='yellow', label='eval')
         plt.legend()
-        plt.savefig(os.path.join('figures', 'Loss Performance of common ViT Teacher.png'))
+        plt.savefig(os.path.join('figures', 'Loss Performance of SegFormer-Pseudo Teacher.png'))
+        plt.show()
+
+        plt.title('Loss Performance of SegFormer-Pseudo (Teacher-Student)')
+        plt.xlabel('epoch')
+        plt.ylabel('loss')
+        plt.ylim((0, 1))
+        plt.plot(range(epochs), loss_path_train, color='red', label='student-train')
+        plt.plot(range(epochs), loss_path_eval, color='orange', label='student-eval')
+        plt.plot(range(epochs), loss_path_train_teacher, color='green', label='teacher-train')
+        plt.plot(range(epochs), loss_path_eval_teacher, color='blue', label='teacher-eval')
+        plt.legend()
+        plt.savefig(os.path.join('figures', 'Loss Performance of SegFormer-Pseudo Teacher-Student.png'))
         plt.show()
 
     return best_loss
@@ -202,37 +223,54 @@ if __name__ == '__main__':
     vis_student = visdom.Visdom(env='student')
     vis_eval = visdom.Visdom(env='eval')
 
+    l1_loss_func = torch.nn.L1Loss()
+
+    label_dataset = archaeological_georgia_biostyle_dataloader.SitesBingBook(config.DataLoaderConfig["dataset"],
+                                                                             config.DataLoaderConfig["maskdir"],
+                                                                             config.DataLoaderConfig["transforms"])
+    train_data_num = math.floor(len(label_dataset) * 0.8)
+    train_dataset, validation_dataset = torch.utils.data.random_split(label_dataset, [train_data_num,
+                                                                                      len(label_dataset) - train_data_num])
+    label_dataLoader = archaeological_georgia_biostyle_dataloader.SitesLoader(config.DataLoaderConfig,
+                                                                              dataset=train_dataset, flag="train")
+    validation_dataloader = archaeological_georgia_biostyle_dataloader.SitesLoader(config.DataLoaderConfig,
+                                                                                   dataset=validation_dataset,
+                                                                                   flag="train")
     unlabel_dataLoader = archaeological_georgia_biostyle_dataloader.SitesLoader(config.DataLoaderConfig,
                                                                                 flag="pseudo")
-    label_dataLoader = archaeological_georgia_biostyle_dataloader.SitesLoader(config.DataLoaderConfig, flag="train")
     eval_dataLoader = archaeological_georgia_biostyle_dataloader.SitesLoader(config.DataLoaderConfig, flag="eval")
     print('Labeled data batch amount: ', len(unlabel_dataLoader) + len(label_dataLoader))
 
-    hyperparameters_grids = {'lr': [1e-4, 7e-5, 5e-5, 3e-5, 1e-5, 5e-6], 'weight_decay': [5e-5], 'scheduler': [0.97]}
+    hyperparameters_grids = {'lr': [16e-4, 12e-5, 8e-5, 4e-5, 1e-5], 'weight_decay': [5e-5], 'scheduler': [0.97],
+                             'supervise_loss_weight': [0.7, 0.8, 0.9]}
     hyperparameters_sets = product(hyperparameters_grids['lr'], hyperparameters_grids['lr'],
                                    hyperparameters_grids['weight_decay'], hyperparameters_grids['scheduler'],
-                                   shuffle=True)
+                                   hyperparameters_grids['supervise_loss_weight'], shuffle=True)
 
     best_loss = 100
     best_hyperparameters = {
-        "t_lr": None,
-        "s_lr": None,
-        "weight_decay": None,
-        "scheduler": None
+        "t_lr": 7e-5,
+        "s_lr": 3e-5,
+        "weight_decay": 5e-5,
+        "scheduler": 0.97,
+        'supervise_loss_weight': 0.8
     }
-    for (_t_lr, _s_lr, _weight_decay, _scheduler) in hyperparameters_sets[:9]:
-        loss = train('segFormer_baseline_epoch_20_train_0.133_eval_0.168_fps_2.07.pth', _t_lr, _s_lr, _weight_decay, _scheduler, epochs=20)
+    for (_t_lr, _s_lr, _weight_decay, _scheduler, _supervise_weight) in hyperparameters_sets[:9]:
+        loss = train('segFormer_baseline_epoch_20_train_0.133_eval_0.168_fps_2.07.pth', _t_lr, _s_lr, _weight_decay,
+                     _scheduler, _supervise_weight, validation_dataloader, epochs=10)
         print(
-            "    Model loss (hyperparameter tunning) for teacher_lr={0}, tstudent_lr={1}, weight_decay={2}, scheduler={3}: {4:.4f}".format(
-                _t_lr, _s_lr, _weight_decay, _scheduler, loss))
+            "    Model loss (hyperparameter tunning) for teacher_lr={0}, tstudent_lr={1}, weight_decay={2}, scheduler={3}, supervise_weight={4}: {5:.4f}".format(
+                _t_lr, _s_lr, _weight_decay, _scheduler, _supervise_weight, loss))
         if loss < best_loss:
             best_loss = loss
             best_hyperparameters = {
                 "t_lr": _t_lr,
                 "s_lr": _s_lr,
                 "weight_decay": _weight_decay,
-                "scheduler": _scheduler
+                "scheduler": _scheduler,
+                'supervise_loss_weight': _supervise_weight
             }
 
-    loss = train(None, best_hyperparameters['t_lr'], best_hyperparameters['s_lr'], best_hyperparameters['weight_decay'],
-                 best_hyperparameters['scheduler'], save_checkpoints=True, plot_loss=True)
+    loss = train('segFormer_baseline_epoch_20_train_0.133_eval_0.168_fps_2.07.pth', best_hyperparameters['t_lr'],
+                 best_hyperparameters['s_lr'], best_hyperparameters['weight_decay'],
+                 best_hyperparameters['scheduler'], eval_dataLoader, save_checkpoints=True, plot_loss=True, epochs=20)
