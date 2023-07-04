@@ -52,11 +52,11 @@ def threshold_pseudo_masks(img, masks):
     return confident_img, confident_mask, confident_predicted, confidence
 
 
-def train(pretrain_weight, teacher_lr, student_lr, weight_decay, scheduler, this_eval_dataloader, supervise_weight,
+def train(pretrain_weight, teacher_lr, student_lr, weight_decay, scheduler, supervise_weight, this_eval_dataloader,
           epochs=config.ModelConfig['epoch_num'],
           save_checkpoints=False, plot_loss=False):
     print('**************** Train *******************')
-    print('teacher_lr: {0} student_lr: {1}'.format(teacher_lr, student_lr))
+    print('teacher_lr: {0} student_lr: {1} supervise_weight: {2}'.format(teacher_lr, student_lr, supervise_weight))
     teacher_model = SegModel(pretrain_weight, teacher_lr, weight_decay, scheduler)
     student_model = SegModel(pretrain_weight, student_lr, weight_decay, scheduler)
 
@@ -255,7 +255,7 @@ if __name__ == '__main__':
         "scheduler": 0.97,
         'supervise_loss_weight': 0.8
     }
-    for (_t_lr, _s_lr, _weight_decay, _scheduler, _supervise_weight) in hyperparameters_sets[:9]:
+    for (_t_lr, _s_lr, _weight_decay, _scheduler, _supervise_weight) in hyperparameters_sets[:12]:
         loss = train('segFormer_baseline_epoch_20_train_0.133_eval_0.168_fps_2.07.pth', _t_lr, _s_lr, _weight_decay,
                      _scheduler, _supervise_weight, validation_dataloader, epochs=10)
         print(
@@ -273,4 +273,5 @@ if __name__ == '__main__':
 
     loss = train('segFormer_baseline_epoch_20_train_0.133_eval_0.168_fps_2.07.pth', best_hyperparameters['t_lr'],
                  best_hyperparameters['s_lr'], best_hyperparameters['weight_decay'],
-                 best_hyperparameters['scheduler'], eval_dataLoader, save_checkpoints=True, plot_loss=True, epochs=20)
+                 best_hyperparameters['scheduler'], best_hyperparameters['supervise_loss_weight'], eval_dataLoader,
+                 save_checkpoints=True, plot_loss=True, epochs=20)
