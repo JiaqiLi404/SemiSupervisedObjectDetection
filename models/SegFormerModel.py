@@ -9,11 +9,8 @@ class SegFormerModel(nn.Module):
     def __init__(self, pretrain_weight=None, lr=None, weight_decay=None, scheduler=None, device="cuda:0", *args,
                  **kwargs):
         super().__init__(*args, **kwargs)
-        id2label = {0: 'background', 1: 'archaeological'}
-        label2id = {'background': 0, 'archaeological': 1}
         self.model = SegformerForSemanticSegmentation.from_pretrained("nvidia/mit-b5", ignore_mismatched_sizes=True,
-                                                                      num_labels=len(id2label), id2label=id2label,
-                                                                      label2id=label2id,
+                                                                      num_labels=1,
                                                                       reshape_last_stage=True)
         self.model.config.output_hidden_states = True
         self.model.to(device)
@@ -34,10 +31,13 @@ class SegFormerModel(nn.Module):
         # self.loss_function = myLoss.SegmentationLoss(1, loss_type='dice', activation='none')
         self.activation_fn = torch.nn.Sigmoid()
 
-    def predict(self, img):
+    def predict(self, img, mask=None):
         self.model.eval()
         img = img.to(self.device)
-        outputs = self.model(pixel_values=img)  # logits are of shape (batch_size, num_labels, height/4, width/4)
+        if mask is not None:
+            mask = mask.to(self.device, dtype=torch.int64)
+        outputs = self.model(pixel_values=img,
+                             labels=mask)  # logits are of shape (batch_size, num_labels, height/4, width/4)
         logits = outputs.logits.cpu()
         size = list(img.shape)
 
@@ -48,26 +48,16 @@ class SegFormerModel(nn.Module):
                                                      align_corners=False)
 
         # Second, apply argmax on the class dimension
-        predict_mask = upsampled_logits.argmax(dim=1)
+        # upsampled_logits = upsampled_logits.argmax(dim=1)
 
-        return predict_mask
+        if mask is None:
+            return upsampled_logits
+        return upsampled_logits, outputs.loss
 
-    def loss_function(self,pred,gt):
-        pred = pred.to(self.device)
-        gt = gt.to(self.device, dtype=torch.int64)
-        outputs = self.model(pixel_values=pred)  # logits are of shape (batch_size, num_labels, height/4, width/4)
-        logits = outputs.logits.cpu()
-        size = list(pred.shape)
-
-        # First, rescale logits to original image size
-        upsampled_logits = nn.functional.interpolate(logits,
-                                                     size=size[2:],  # (height, width)
-                                                     mode='bilinear',
-                                                     align_corners=False)
-
+    def loss_function(self, pred, gt):
         valid_mask = (gt >= 0).float()
         loss_fct = nn.BCEWithLogitsLoss(reduction="none")
-        loss = loss_fct(upsampled_logits.squeeze(1), gt.float())
+        loss = loss_fct(pred, gt.float())
         loss = (loss * valid_mask).mean()
         return loss
 
@@ -96,7 +86,7 @@ class SegFormerModel(nn.Module):
         self.model.train()
         # cuda tensor
         imgs = imgs.to(self.device)
-        masks = masks.to(self.device,dtype=torch.int64)
+        masks = masks.to(self.device, dtype=torch.int64)
         outputs = self.model(pixel_values=imgs, labels=masks)
 
         # logits = outputs.logits.cpu()
@@ -127,7 +117,7 @@ class SegFormerModel(nn.Module):
 
     def show_mask(self, vis, img, mask, title=""):
         mask_img = img.cpu().numpy()
-        mask= mask.cpu().numpy()
+        mask = mask.detach().cpu().numpy()
         if mask is not None:
             mask_img[0, :, :] = mask
         vis.image(mask_img, opts=dict(title=title))

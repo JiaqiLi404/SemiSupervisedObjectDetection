@@ -24,8 +24,8 @@ self_supervise_loss_weight = 0.3
 
 def threshold_pseudo_masks(img, masks):
     N = masks.size(0)
-    masks_flat = masks.squeeze(dim=1)
-    masks_flat = masks_flat.view(N, -1)
+    # masks = masks.squeeze(dim=1)
+    masks_flat = masks.reshape(N, -1)
     pixel_num = torch.sum(torch.abs(masks_flat), dim=1)
     confidence = torch.where((masks_flat >= PESUDO_MAKS_THRESHOLD) | (masks_flat <= 1 - PESUDO_MAKS_THRESHOLD), 1, 0)
     # confidence = torch.where((masks_flat >= PESUDO_MAKS_THRESHOLD) | (masks_flat <= 1 - PESUDO_MAKS_THRESHOLD), 1, 0)
@@ -80,6 +80,7 @@ def train(pretrain_weight, teacher_lr, student_lr, weight_decay, scheduler, epoc
             teacher_loss_pseudo = 0
             if confident_img is not None:
                 image_used += confident_img.size(0)
+                confident_mask=confident_mask.squeeze(1)
                 teacher_loss_pseudo, confident_predicted = teacher_model.train_one_epoch(confident_img, confident_mask)
                 teacher_model.show_mask(vis_teacher, confident_img[0], confident_predicted[0],
                                         title="Teacher Predict epoch{0}".format(epoch_i))
@@ -92,15 +93,15 @@ def train(pretrain_weight, teacher_lr, student_lr, weight_decay, scheduler, epoc
         for img, ground_truth, _, _ in label_dataLoader:
             img = img.to(device=device, dtype=torch.float32)
             ground_truth = ground_truth.to(device=device, dtype=torch.float32)
-            ground_truth = ground_truth.unsqueeze(1)
+            # ground_truth = ground_truth.unsqueeze(1)
             # train teacher one epoch
             teacher_loss_gt, _ = teacher_model.train_one_epoch(img, ground_truth)
             # predict from the teacher
-            teacher_predicted_masks = teacher_model.predict(img)
+            with torch.no_grad():
+                teacher_predicted_masks = teacher_model.predict(img)
             # predict from the student
-            student_predicted_masks = student_model.predict(img)
+            student_predicted_masks, student_loss = student_model.predict(img, ground_truth)
             # learn from both teacher and ground truth
-            student_loss = student_model.train_one_epoch(student_predicted_masks, ground_truth)
             self_supervise_loss = student_model.loss_function(student_predicted_masks, teacher_predicted_masks)
             loss = supervise_loss_weight * student_loss + self_supervise_loss_weight * self_supervise_loss
             student_model.train_from_loss(loss)
@@ -218,7 +219,7 @@ if __name__ == '__main__':
         "weight_decay": None,
         "scheduler": None
     }
-    for (_t_lr,_s_lr,_weight_decay,_scheduler) in hyperparameters_sets[:9]:
+    for (_t_lr, _s_lr, _weight_decay, _scheduler) in hyperparameters_sets[:9]:
         loss = train(None, _t_lr, _s_lr, _weight_decay, _scheduler, epochs=20)
         print(
             "    Model loss (hyperparameter tunning) for teacher_lr={0}, tstudent_lr={1}, weight_decay={2}, scheduler={3}: {4:.4f}".format(
