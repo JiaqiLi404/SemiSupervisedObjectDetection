@@ -6,12 +6,13 @@ import config
 import visdom
 import matplotlib.pyplot as plt
 import time
-from transformers import SegformerImageProcessor
+from transformers import SegformerImageProcessor,BeitForSemanticSegmentation
 from models.SegFormerModel import SegFormerModel
 import math
 
 pretained_model = "nvidia/mit-b5"
 visdom_display_freq = 5  # send image to visdom every 5 epoch
+
 
 # python -m visdom.server
 
@@ -53,9 +54,11 @@ def Train(model, train_dataloader, eval_dataLoader, feature_extractor, epoch_num
 
             encoded_img = encoded_img.to(device=device)
             encoded_mask = encoded_mask.to(device=device)
+            img_cuda=img.to(device=device)
+            mask_cuda = mask.to(device=device,dtype=torch.int64)
 
             # forward
-            loss, predict_mask = model.train_one_epoch(imgs=encoded_img, masks=encoded_mask)
+            loss, predict_mask = model.train_one_epoch(imgs=img_cuda, masks=mask_cuda)
             train_epoch_loss.append(loss.item())
 
             if len(train_epoch_loss) % visdom_display_freq == 0:
@@ -78,9 +81,11 @@ def Train(model, train_dataloader, eval_dataLoader, feature_extractor, epoch_num
 
                 encoded_img = encoded_img.to(device=device)
                 encoded_mask = encoded_mask.to(device=device)
+                img_cuda = img.to(device=device)
+                mask_cuda=mask.to(device=device,dtype=torch.int64)
 
                 # forward
-                loss, predict_mask = model.eval_one_epoch(imgs=encoded_img, masks=encoded_mask)
+                loss, predict_mask = model.eval_one_epoch(imgs=img_cuda, masks=mask_cuda)
                 eval_epoch_loss.append(loss.item())
 
                 if len(eval_epoch_loss) % visdom_display_freq == 0:
@@ -118,7 +123,7 @@ def Train(model, train_dataloader, eval_dataLoader, feature_extractor, epoch_num
     return best_loss, best_epoch
 
 
-def Hyperparameter_Tuning(lr=[1e-5], weight_decay=[5e-5], scheduler=[0.97]):
+def Hyperparameter_Tuning(lr, weight_decay, scheduler, epochs=30):
     feature_extractor = SegformerImageProcessor.from_pretrained(pretained_model)
     label_dataset = archaeological_georgia_biostyle_dataloader.SitesBingBook(config.DataLoaderConfig["dataset"],
                                                                              config.DataLoaderConfig["maskdir"],
@@ -147,8 +152,8 @@ def Hyperparameter_Tuning(lr=[1e-5], weight_decay=[5e-5], scheduler=[0.97]):
                 print("Training model (hyperparameter tunning) for lr={0}, weight_decay={1}, scheduler={2}"
                       .format(_lr, _weight_decay, _scheduler))
                 model = SegFormerModel(lr=_lr, weight_decay=_weight_decay, scheduler=_scheduler)
-                loss, trained_epoch = Train(model, train_dataloader, validation_dataloader, feature_extractor,save_model=False)
-
+                loss, trained_epoch = Train(model, train_dataloader, validation_dataloader, feature_extractor,
+                                            epoch_num=epochs, save_model=False)
                 print(
                     "    Model loss (hyperparameter tunning) for lr={0}, weight_decay={1}, scheduler={2}: {3:.4f}".format(
                         _lr, _weight_decay, _scheduler, loss))
@@ -170,17 +175,10 @@ if __name__ == '__main__':
     vis_pred = visdom.Visdom(env="SegFormer_Prediction")
     # feature_extractor = SegformerFeatureExtractor(align=False, reduce_zero_label=False)
 
-    best_hyperparameters = {
-        "lr": 1e-5,
-        "weight_decay": 5e-5,
-        "scheduler": 0.97
-    }
-
 
     feature_extractor = SegformerImageProcessor.from_pretrained(pretained_model)
     # set hyperparameter list
-    best_hyperparameters = Hyperparameter_Tuning(lr=[1e-5], weight_decay=[5e-5], scheduler=[0.97])
-
+    best_hyperparameters = Hyperparameter_Tuning(lr=[1e-4,7e-5,5e-5,3e-5,1e-5,5e-6], weight_decay=[5e-5], scheduler=[0.97])
 
     label_dataLoader = archaeological_georgia_biostyle_dataloader.SitesLoader(config.DataLoaderConfig, flag="train")
     eval_dataLoader = archaeological_georgia_biostyle_dataloader.SitesLoader(config.DataLoaderConfig, flag="eval")
