@@ -184,8 +184,8 @@ def train(pretrain_weight, teacher_lr, student_lr, weight_decay, scheduler, supe
         loss_path_eval_teacher.append(eval_loss_teacher)
 
     if plot_loss:
-        title = 't_lr-{0} s_lr-{1} supervise_w-{2} threshold-{3}' \
-            .format(teacher_lr, student_lr, supervise_weight, PESUDO_MAKS_THRESHOLD)
+        title = 't_lr-{0} s_lr-{1} supervise_w-{2} threshold-{3} epoch-{4}' \
+            .format(teacher_lr, student_lr, supervise_weight, PESUDO_MAKS_THRESHOLD, epochs)
         print('**********FINISH**********')
         plt.title('Loss Performance of SegFormer-Pseudo (Student)')
         plt.xlabel('epoch')
@@ -247,23 +247,25 @@ if __name__ == '__main__':
     eval_dataLoader = archaeological_georgia_biostyle_dataloader.SitesLoader(config.DataLoaderConfig, flag="eval")
     print('Labeled data batch amount: ', len(unlabel_dataLoader) + len(label_dataLoader))
 
-    hyperparameters_grids = {'lr': [2e-5, 5e-6, 1e-6], 'weight_decay': [5e-5], 'scheduler': [0.97],
-                             'supervise_loss_weight': [0.9], 'threshold': [0.7, 0.8, 0.85]}
-    hyperparameters_sets = product(hyperparameters_grids['lr'], hyperparameters_grids['lr'],
+    # hyperparameters_grids = {'lr': [2e-5, 5e-6, 1e-6], 'weight_decay': [5e-5], 'scheduler': [0.97],
+    #                          'supervise_loss_weight': [0.8], 'threshold': [0.7, 0.8, 0.85]}
+    hyperparameters_grids = {'t_lr': [5e-6, 1e-6, 5e-7], 's_lr': [5e-5,2e-5], 'weight_decay': [5e-5], 'scheduler': [0.97],
+                             'supervise_loss_weight': [0.8], 'threshold': [0.75, 0.8]}
+    hyperparameters_sets = product(hyperparameters_grids['t_lr'], hyperparameters_grids['s_lr'],
                                    hyperparameters_grids['weight_decay'], hyperparameters_grids['scheduler'],
                                    hyperparameters_grids['supervise_loss_weight'], hyperparameters_grids['threshold'],
                                    shuffle=True)
 
     best_loss = 100
     best_hyperparameters = {
-        "t_lr": 5e-6,
-        "s_lr": 4e-5,
+        "t_lr": 1e-6,
+        "s_lr": 2e-5,
         "weight_decay": 5e-5,
         "scheduler": 0.97,
-        'supervise_loss_weight': 0.9,
+        'supervise_loss_weight': 0.8,
         'threshold': 0.8
     }
-    for (_t_lr, _s_lr, _weight_decay, _scheduler, _supervise_weight, _threshold) in hyperparameters_sets[:4]:
+    for (_t_lr, _s_lr, _weight_decay, _scheduler, _supervise_weight, _threshold) in hyperparameters_sets[:12]:
         PESUDO_MAKS_THRESHOLD = _threshold
         loss = train(pretrain_weight, _t_lr, _s_lr, _weight_decay, _scheduler, _supervise_weight, validation_dataloader,
                      epochs=10, plot_loss=True)
@@ -284,4 +286,4 @@ if __name__ == '__main__':
     loss = train(pretrain_weight, best_hyperparameters['t_lr'], best_hyperparameters['s_lr'],
                  best_hyperparameters['weight_decay'], best_hyperparameters['scheduler'],
                  best_hyperparameters['supervise_loss_weight'], eval_dataLoader, save_checkpoints=True, plot_loss=True,
-                 epochs=1)
+                 epochs=50)
