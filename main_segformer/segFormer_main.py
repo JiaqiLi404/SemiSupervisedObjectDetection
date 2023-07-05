@@ -7,7 +7,6 @@ import config
 import visdom
 import matplotlib.pyplot as plt
 import time
-from transformers import SegformerImageProcessor,BeitForSemanticSegmentation
 from models.SegFormerModel import SegFormerModel
 import math
 

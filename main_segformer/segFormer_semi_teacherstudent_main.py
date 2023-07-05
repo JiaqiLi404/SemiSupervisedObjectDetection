@@ -11,6 +11,7 @@ import matplotlib.pyplot as plt
 import time
 from Utils import product
 import math
+import models.Loss as myLoss
 
 from models.SegFormerModel import SegFormerModel as SegModel
 
@@ -100,10 +101,10 @@ def train(pretrain_weight, teacher_lr, student_lr, weight_decay, scheduler, supe
             with torch.no_grad():
                 teacher_predicted_masks = teacher_model.predict(img)
             # predict from the student
-            student_predicted_masks, student_loss = student_model.predict(img, ground_truth)
+            student_loss, student_predicted_masks = student_model.predict(img, ground_truth)
             # learn from both teacher and ground truth
 
-            self_supervise_loss = l1_loss_func(student_predicted_masks, teacher_predicted_masks)
+            self_supervise_loss = loss_func(student_predicted_masks, teacher_predicted_masks)
             loss = supervise_weight * student_loss + (1 - supervise_weight) * self_supervise_loss
             student_model.train_from_loss(loss)
             epoch_loss.append(float(loss.item()))
@@ -218,12 +219,13 @@ def train(pretrain_weight, teacher_lr, student_lr, weight_decay, scheduler, supe
 
 
 if __name__ == '__main__':
+    pretrain_weight = 'segFormer_baseline_epoch_18_train_0.203_eval_0.322_fps_0.52.pth'
     device = "cuda:0"
     vis_teacher = visdom.Visdom(env='teacher')
     vis_student = visdom.Visdom(env='student')
     vis_eval = visdom.Visdom(env='eval')
 
-    l1_loss_func = torch.nn.L1Loss()
+    loss_func = myLoss.SegmentationLoss(1, loss_type='dice', activation='none')
 
     label_dataset = archaeological_georgia_biostyle_dataloader.SitesBingBook(config.DataLoaderConfig["dataset"],
                                                                              config.DataLoaderConfig["maskdir"],
@@ -241,7 +243,7 @@ if __name__ == '__main__':
     eval_dataLoader = archaeological_georgia_biostyle_dataloader.SitesLoader(config.DataLoaderConfig, flag="eval")
     print('Labeled data batch amount: ', len(unlabel_dataLoader) + len(label_dataLoader))
 
-    hyperparameters_grids = {'lr': [16e-4, 12e-5, 8e-5, 4e-5, 1e-5], 'weight_decay': [5e-5], 'scheduler': [0.97],
+    hyperparameters_grids = {'lr': [8e-5, 4e-5, 1e-5, 5e-6], 'weight_decay': [5e-5], 'scheduler': [0.97],
                              'supervise_loss_weight': [0.7, 0.8, 0.9]}
     hyperparameters_sets = product(hyperparameters_grids['lr'], hyperparameters_grids['lr'],
                                    hyperparameters_grids['weight_decay'], hyperparameters_grids['scheduler'],
@@ -256,8 +258,8 @@ if __name__ == '__main__':
         'supervise_loss_weight': 0.8
     }
     for (_t_lr, _s_lr, _weight_decay, _scheduler, _supervise_weight) in hyperparameters_sets[:12]:
-        loss = train('segFormer_baseline_epoch_20_train_0.133_eval_0.168_fps_2.07.pth', _t_lr, _s_lr, _weight_decay,
-                     _scheduler, _supervise_weight, validation_dataloader, epochs=10)
+        loss = train(pretrain_weight, _t_lr, _s_lr, _weight_decay, _scheduler, _supervise_weight, validation_dataloader,
+                     epochs=10)
         print(
             "    Model loss (hyperparameter tunning) for teacher_lr={0}, tstudent_lr={1}, weight_decay={2}, scheduler={3}, supervise_weight={4}: {5:.4f}".format(
                 _t_lr, _s_lr, _weight_decay, _scheduler, _supervise_weight, loss))
@@ -271,7 +273,7 @@ if __name__ == '__main__':
                 'supervise_loss_weight': _supervise_weight
             }
 
-    loss = train('segFormer_baseline_epoch_20_train_0.133_eval_0.168_fps_2.07.pth', best_hyperparameters['t_lr'],
-                 best_hyperparameters['s_lr'], best_hyperparameters['weight_decay'],
-                 best_hyperparameters['scheduler'], best_hyperparameters['supervise_loss_weight'], eval_dataLoader,
-                 save_checkpoints=True, plot_loss=True, epochs=20)
+    loss = train(pretrain_weight, best_hyperparameters['t_lr'], best_hyperparameters['s_lr'],
+                 best_hyperparameters['weight_decay'], best_hyperparameters['scheduler'],
+                 best_hyperparameters['supervise_loss_weight'], eval_dataLoader, save_checkpoints=True, plot_loss=True,
+                 epochs=20)
