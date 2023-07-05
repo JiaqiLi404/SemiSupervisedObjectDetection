@@ -57,7 +57,9 @@ def train(pretrain_weight, teacher_lr, student_lr, weight_decay, scheduler, supe
           epochs=config.ModelConfig['epoch_num'],
           save_checkpoints=False, plot_loss=False):
     print('**************** Train *******************')
-    print('teacher_lr: {0} student_lr: {1} supervise_weight: {2}'.format(teacher_lr, student_lr, supervise_weight))
+    print('teacher_lr: {0} student_lr: {1} supervise_weight: {2} threshold: {3}'.format(teacher_lr, student_lr,
+                                                                                        supervise_weight,
+                                                                                        PESUDO_MAKS_THRESHOLD))
     teacher_model = SegModel(pretrain_weight, teacher_lr, weight_decay, scheduler)
     student_model = SegModel(pretrain_weight, student_lr, weight_decay, scheduler)
 
@@ -182,6 +184,8 @@ def train(pretrain_weight, teacher_lr, student_lr, weight_decay, scheduler, supe
         loss_path_eval_teacher.append(eval_loss_teacher)
 
     if plot_loss:
+        title = 't_lr-{0} s_lr-{1} supervise_w-{2} threshold-{3}' \
+            .format(teacher_lr, student_lr, supervise_weight, PESUDO_MAKS_THRESHOLD)
         print('**********FINISH**********')
         plt.title('Loss Performance of SegFormer-Pseudo (Student)')
         plt.xlabel('epoch')
@@ -190,7 +194,7 @@ def train(pretrain_weight, teacher_lr, student_lr, weight_decay, scheduler, supe
         plt.plot(range(epochs), loss_path_train, color='blue', label='train')
         plt.plot(range(epochs), loss_path_eval, color='yellow', label='eval')
         plt.legend()
-        plt.savefig(os.path.join('figures', 'Loss Performance of SegFormer-Pseudo Student.png'))
+        plt.savefig(os.path.join('figures', 'Loss Performance of SegFormer-Pseudo Student ' + title + '.png'))
         plt.show()
 
         plt.title('Loss Performance of SegFormer-Pseudo (Teacher)')
@@ -200,7 +204,7 @@ def train(pretrain_weight, teacher_lr, student_lr, weight_decay, scheduler, supe
         plt.plot(range(epochs), loss_path_train_teacher, color='blue', label='train')
         plt.plot(range(epochs), loss_path_eval_teacher, color='yellow', label='eval')
         plt.legend()
-        plt.savefig(os.path.join('figures', 'Loss Performance of SegFormer-Pseudo Teacher.png'))
+        plt.savefig(os.path.join('figures', 'Loss Performance of SegFormer-Pseudo Teacher ' + title + '.png'))
         plt.show()
 
         plt.title('Loss Performance of SegFormer-Pseudo (Teacher-Student)')
@@ -212,7 +216,7 @@ def train(pretrain_weight, teacher_lr, student_lr, weight_decay, scheduler, supe
         plt.plot(range(epochs), loss_path_train_teacher, color='green', label='teacher-train')
         plt.plot(range(epochs), loss_path_eval_teacher, color='blue', label='teacher-eval')
         plt.legend()
-        plt.savefig(os.path.join('figures', 'Loss Performance of SegFormer-Pseudo Teacher-Student.png'))
+        plt.savefig(os.path.join('figures', 'Loss Performance of SegFormer-Pseudo Teacher-Student ' + title + '.png'))
         plt.show()
 
     return best_loss
@@ -243,26 +247,29 @@ if __name__ == '__main__':
     eval_dataLoader = archaeological_georgia_biostyle_dataloader.SitesLoader(config.DataLoaderConfig, flag="eval")
     print('Labeled data batch amount: ', len(unlabel_dataLoader) + len(label_dataLoader))
 
-    hyperparameters_grids = {'lr': [8e-5, 4e-5, 1e-5, 5e-6], 'weight_decay': [5e-5], 'scheduler': [0.97],
-                             'supervise_loss_weight': [0.7, 0.8, 0.9]}
+    hyperparameters_grids = {'lr': [2e-5, 5e-6, 1e-6], 'weight_decay': [5e-5], 'scheduler': [0.97],
+                             'supervise_loss_weight': [0.9], 'threshold': [0.7, 0.8, 0.85]}
     hyperparameters_sets = product(hyperparameters_grids['lr'], hyperparameters_grids['lr'],
                                    hyperparameters_grids['weight_decay'], hyperparameters_grids['scheduler'],
-                                   hyperparameters_grids['supervise_loss_weight'], shuffle=True)
+                                   hyperparameters_grids['supervise_loss_weight'], hyperparameters_grids['threshold'],
+                                   shuffle=True)
 
     best_loss = 100
     best_hyperparameters = {
-        "t_lr": 7e-5,
-        "s_lr": 3e-5,
+        "t_lr": 5e-6,
+        "s_lr": 4e-5,
         "weight_decay": 5e-5,
         "scheduler": 0.97,
-        'supervise_loss_weight': 0.8
+        'supervise_loss_weight': 0.9,
+        'threshold': 0.8
     }
-    for (_t_lr, _s_lr, _weight_decay, _scheduler, _supervise_weight) in hyperparameters_sets[:12]:
+    for (_t_lr, _s_lr, _weight_decay, _scheduler, _supervise_weight, _threshold) in hyperparameters_sets[:4]:
+        PESUDO_MAKS_THRESHOLD = _threshold
         loss = train(pretrain_weight, _t_lr, _s_lr, _weight_decay, _scheduler, _supervise_weight, validation_dataloader,
-                     epochs=10)
+                     epochs=10, plot_loss=True)
         print(
-            "    Model loss (hyperparameter tunning) for teacher_lr={0}, tstudent_lr={1}, weight_decay={2}, scheduler={3}, supervise_weight={4}: {5:.4f}".format(
-                _t_lr, _s_lr, _weight_decay, _scheduler, _supervise_weight, loss))
+            "    Model loss (hyperparameter tunning) for teacher_lr={0}, tstudent_lr={1}, supervise_weight={2}, threshold={3}: {4:.4f}".format(
+                _t_lr, _s_lr, _supervise_weight, _threshold, loss))
         if loss < best_loss:
             best_loss = loss
             best_hyperparameters = {
@@ -270,10 +277,11 @@ if __name__ == '__main__':
                 "s_lr": _s_lr,
                 "weight_decay": _weight_decay,
                 "scheduler": _scheduler,
-                'supervise_loss_weight': _supervise_weight
+                'supervise_loss_weight': _supervise_weight,
+                'threshold': _threshold
             }
 
     loss = train(pretrain_weight, best_hyperparameters['t_lr'], best_hyperparameters['s_lr'],
                  best_hyperparameters['weight_decay'], best_hyperparameters['scheduler'],
                  best_hyperparameters['supervise_loss_weight'], eval_dataLoader, save_checkpoints=True, plot_loss=True,
-                 epochs=20)
+                 epochs=1)
