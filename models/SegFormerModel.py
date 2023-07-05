@@ -1,16 +1,17 @@
+from asyncio.proactor_events import constants
 import os
 import models.Loss as myLoss
 import torch.nn as nn
 import torch
 from transformers import SegformerForSemanticSegmentation, SegformerModel
-
+import numpy as np
 
 class SegFormerModel(nn.Module):
-    def __init__(self, pretrain_weight=None, lr=None, weight_decay=None, scheduler=None, device="cuda:0", *args,
+    def __init__(self, pretrain_weight=None, lr=None, weight_decay=None, scheduler=None, device="cuda:0", use_dice_loss=False, num_labels=1, *args,
                  **kwargs):
         super().__init__(*args, **kwargs)
         self.model = SegformerForSemanticSegmentation.from_pretrained("nvidia/mit-b5", ignore_mismatched_sizes=True,
-                                                                      num_labels=1,
+                                                                      num_labels=num_labels,
                                                                       reshape_last_stage=True)
         self.model.config.output_hidden_states = True
         self.model.to(device)
@@ -28,8 +29,11 @@ class SegFormerModel(nn.Module):
         self.scheduler = torch.optim.lr_scheduler.ExponentialLR(self.optimizer,
                                                                 gamma=scheduler)  # config.ModelConfig['scheduler']
         # loss_function = torch.nn.L1Loss()
-        # self.loss_function = myLoss.SegmentationLoss(1, loss_type='dice', activation='none')
+        self.loss_function = myLoss.SegmentationLoss(1, loss_type='dice', activation='none')
+        self.mse_loss_function = myLoss.SegmentationLoss(1, loss_type='mse')
         self.activation_fn = torch.nn.Sigmoid()
+        self.use_dice_loss = use_dice_loss
+        self.num_labels = num_labels
 
     def predict(self, img, mask=None):
         self.model.eval()
@@ -61,7 +65,7 @@ class SegFormerModel(nn.Module):
         loss = (loss * valid_mask).mean()
         return loss
 
-    def eval_one_epoch(self, imgs, masks):
+    def eval_one_epoch(self, imgs, masks): # return loss, predict_mask
         self.model.eval()
         with torch.no_grad():
             imgs = imgs.to(self.device)
@@ -78,11 +82,17 @@ class SegFormerModel(nn.Module):
                                                          align_corners=False)
 
             # Second, apply argmax on the class dimension
-            predict_masks = upsampled_logits.argmax(dim=1)
+            # predict_masks = upsampled_logits.argmax(dim=1)
+            predict_masks = self.activation_fn(upsampled_logits)
+            predict_masks = torch.squeeze(predict_masks, 1)
 
-            return outputs.loss, predict_masks
+            if self.use_dice_loss:
+                loss = self.loss_function(predict_masks, masks)
+                return loss, predict_masks
+            else:
+                return outputs.loss, predict_masks
 
-    def train_one_epoch(self, imgs, masks):
+    def train_one_epoch(self, imgs, masks): # return loss, predict_mask
         self.model.train()
         # cuda tensor
         imgs = imgs.to(self.device)
@@ -100,11 +110,17 @@ class SegFormerModel(nn.Module):
                                                      align_corners=False)
 
         # Second, apply argmax on the class dimension
-        predict_masks = upsampled_logits.argmax(dim=1)
+        # predict_masks = upsampled_logits.argmax(dim=1)
+        predict_masks = self.activation_fn(upsampled_logits)
+        predict_masks = torch.squeeze(predict_masks, 1)
 
-        # _loss = self.loss_function(predict_masks, masks)
-        self.train_from_loss(outputs.loss)
-        return outputs.loss, predict_masks
+        if self.use_dice_loss:
+            loss = self.loss_function(predict_masks, masks)
+            self.train_from_loss(loss)
+            return loss, predict_masks
+        else:
+            self.train_from_loss(outputs.loss)
+            return outputs.loss, predict_masks
 
     def train_from_loss(self, loss):
         self.optimizer.zero_grad()
@@ -117,10 +133,50 @@ class SegFormerModel(nn.Module):
 
     def show_mask(self, vis, img, mask, title=""):
         mask_img = img.cpu().numpy()
-        mask = mask.detach().cpu().numpy()
         if mask is not None:
+            mask = mask.detach().cpu().numpy()
             mask_img[0, :, :] = mask
         vis.image(mask_img, opts=dict(title=title))
         # mask_img = mask_img.transpose((1, 2, 0))
         # mask_img = cv2.cvtColor(mask_img, cv2.COLOR_RGB2BGR)
         # cv2.imwrite(os.path.join('figures', 'show mask ' , " .png"), 255 * mask_img)
+
+
+    def eval_one_epoch_without_mask(self, imgs): # return loss, predict_mask
+        self.model.eval()
+        with torch.no_grad():
+            imgs = imgs.to(self.device)
+            outputs = self.model(pixel_values=imgs)  # logits are of shape (batch_size, num_labels, height/4, width/4)
+            logits = outputs.logits
+            size = list(imgs.shape)
+
+            # First, rescale logits to original image size
+            upsampled_logits = nn.functional.interpolate(logits,
+                                                         size=size[2:],  # (height, width)
+                                                         mode='bilinear',
+                                                         align_corners=False)
+
+            loss = self.mse_loss_function(imgs, upsampled_logits)
+
+            return loss, upsampled_logits
+
+    def train_one_epoch_without_mask(self, imgs):
+        self.model.train()
+        # cuda tensor
+        imgs = imgs.to(self.device)
+        outputs = self.model(pixel_values=imgs)
+
+        # logits = outputs.logits.cpu()
+        logits = outputs.logits
+        size = list(imgs.shape)
+
+        # First, rescale logits to original image size
+        upsampled_logits = nn.functional.interpolate(logits,
+                                                     size=size[2:],  # (height, width)
+                                                     mode='bilinear',
+                                                     align_corners=False)
+
+        loss = self.mse_loss_function(imgs, upsampled_logits)
+        self.train_from_loss(loss)
+
+        return loss, upsampled_logits

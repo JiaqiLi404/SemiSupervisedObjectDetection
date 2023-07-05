@@ -1,5 +1,6 @@
 import os.path
-
+import sys
+sys.path.append('../')
 import archaeological_georgia_biostyle_dataloader
 import torch
 import config
@@ -10,6 +11,7 @@ from transformers import SegformerImageProcessor,BeitForSemanticSegmentation
 from models.SegFormerModel import SegFormerModel
 import math
 
+root_path = "../"
 pretained_model = "nvidia/mit-b5"
 visdom_display_freq = 5  # send image to visdom every 5 epoch
 
@@ -24,19 +26,15 @@ def Prediction():
     with torch.no_gard():
         dataPatches = 0
         for img, _, _, _ in unlabel_dataLoader:
-            encoded_inputs = feature_extractor(img, return_tensors="pt")
-            encoded_img = encoded_inputs["pixel_values"]
-            encoded_img = encoded_img.to(device=device)
-
             predict_mask = model.predict(
-                img=encoded_img)  # logits are of shape (batch_size, num_labels, height/4, width/4)
+                img=img)  # logits are of shape (batch_size, num_labels, height/4, width/4)
             dataPatches += 1
             if dataPatches % visdom_display_freq == 0:
                 model.show_mask(vis_pred, img[0], None, title="Raw Image {0}".format(dataPatches))
                 model.show_mask(vis_pred, img[0], predict_mask[0], title="Predicted Mask epoch{0}".format(dataPatches))
 
 
-def Train(model, train_dataloader, eval_dataLoader, feature_extractor, epoch_num=config.ModelConfig['epoch_num'],
+def Train(model, train_dataloader, eval_dataLoader, epoch_num=config.ModelConfig['epoch_num'],
           save_model=False, loss_plot=None):
     train_loss_path = []
     eval_loss_path = []
@@ -48,17 +46,8 @@ def Train(model, train_dataloader, eval_dataLoader, feature_extractor, epoch_num
         model.train()
         train_epoch_loss = []
         for img, mask, _, _ in train_dataloader:
-            encoded_inputs = feature_extractor(img, mask, return_tensors="pt")
-            encoded_img = encoded_inputs["pixel_values"]
-            encoded_mask = encoded_inputs["labels"]
-
-            encoded_img = encoded_img.to(device=device)
-            encoded_mask = encoded_mask.to(device=device)
-            img_cuda=img.to(device=device)
-            mask_cuda = mask.to(device=device,dtype=torch.int64)
-
             # forward
-            loss, predict_mask = model.train_one_epoch(imgs=img_cuda, masks=mask_cuda)
+            loss, predict_mask = model.train_one_epoch(imgs=img, masks=mask)
             train_epoch_loss.append(loss.item())
 
             if len(train_epoch_loss) % visdom_display_freq == 0:
@@ -75,23 +64,13 @@ def Train(model, train_dataloader, eval_dataLoader, feature_extractor, epoch_num
         eval_epoch_loss = []
         with torch.no_grad():
             for img, mask, _, _ in eval_dataLoader:
-                encoded_inputs = feature_extractor(img, mask, return_tensors="pt")
-                encoded_img = encoded_inputs["pixel_values"]
-                encoded_mask = encoded_inputs["labels"]
-
-                encoded_img = encoded_img.to(device=device)
-                encoded_mask = encoded_mask.to(device=device)
-                img_cuda = img.to(device=device)
-                mask_cuda=mask.to(device=device,dtype=torch.int64)
-
                 # forward
-                loss, predict_mask = model.eval_one_epoch(imgs=img_cuda, masks=mask_cuda)
+                loss, predict_mask = model.eval_one_epoch(imgs=img, masks=mask)
                 eval_epoch_loss.append(loss.item())
 
                 if len(eval_epoch_loss) % visdom_display_freq == 0:
                     model.show_mask(vis_eval, img[0], mask[0], title="Ground Truth")
                     model.show_mask(vis_eval, img[0], predict_mask[0], title="Predicted Mask epoch {0}".format(epoch_i))
-
         eval_loss = sum(eval_epoch_loss) / len(eval_dataLoader)
         eval_loss_path.append(eval_loss)
         fps = (time.time() - s_time) / len(eval_dataLoader)
@@ -104,7 +83,7 @@ def Train(model, train_dataloader, eval_dataLoader, feature_extractor, epoch_num
             best_epoch = epoch_i
             if save_model:
                 torch.save(model.state_dict(),
-                           os.path.join('checkpoints',
+                           os.path.join('{0}/checkpoints'.format(root_path),
                                         'segFormer_epoch_{0}_train_{1:.3f}_eval_{2:.3f}_fps_{3:.2f}.pth'
                                         .format(epoch_i, train_loss, best_loss, fps)))
 
@@ -117,14 +96,13 @@ def Train(model, train_dataloader, eval_dataLoader, feature_extractor, epoch_num
         plt.plot(range(config.ModelConfig['epoch_num']), train_loss_path, color='blue', label='train')
         plt.plot(range(config.ModelConfig['epoch_num']), eval_loss_path, color='yellow', label='eval')
         plt.legend()
-        plt.savefig(os.path.join('figures', "_".join(loss_plot.split(" ")) + ".png"))
+        plt.savefig(os.path.join('{0}/figures'.format(root_path), "_".join(loss_plot.split(" ")) + ".png"))
         plt.show()
 
     return best_loss, best_epoch
 
 
 def Hyperparameter_Tuning(lr, weight_decay, scheduler, epochs=30):
-    feature_extractor = SegformerImageProcessor.from_pretrained(pretained_model)
     label_dataset = archaeological_georgia_biostyle_dataloader.SitesBingBook(config.DataLoaderConfig["dataset"],
                                                                              config.DataLoaderConfig["maskdir"],
                                                                              config.DataLoaderConfig["transforms"])
@@ -152,7 +130,7 @@ def Hyperparameter_Tuning(lr, weight_decay, scheduler, epochs=30):
                 print("Training model (hyperparameter tunning) for lr={0}, weight_decay={1}, scheduler={2}"
                       .format(_lr, _weight_decay, _scheduler))
                 model = SegFormerModel(lr=_lr, weight_decay=_weight_decay, scheduler=_scheduler)
-                loss, trained_epoch = Train(model, train_dataloader, validation_dataloader, feature_extractor,
+                loss, trained_epoch = Train(model, train_dataloader, validation_dataloader,
                                             epoch_num=epochs, save_model=False)
                 print(
                     "    Model loss (hyperparameter tunning) for lr={0}, weight_decay={1}, scheduler={2}: {3:.4f}".format(
@@ -173,12 +151,14 @@ if __name__ == '__main__':
     vis_train = visdom.Visdom(env="SegFormer_Train")
     vis_eval = visdom.Visdom(env="SegFormer_Evaluation")
     vis_pred = visdom.Visdom(env="SegFormer_Prediction")
-    # feature_extractor = SegformerFeatureExtractor(align=False, reduce_zero_label=False)
 
-
-    feature_extractor = SegformerImageProcessor.from_pretrained(pretained_model)
     # set hyperparameter list
-    best_hyperparameters = Hyperparameter_Tuning(lr=[1e-4,7e-5,5e-5,3e-5,1e-5,5e-6], weight_decay=[5e-5], scheduler=[0.97])
+    best_hyperparameters = {
+        "lr": 5e-5,
+        "weight_decay": 5e-5,
+        "scheduler": 0.97
+    }
+    # best_hyperparameters = Hyperparameter_Tuning(lr=[1e-4,7e-5,5e-5,3e-5,1e-5,5e-6], weight_decay=[5e-5], scheduler=[0.97])
 
     label_dataLoader = archaeological_georgia_biostyle_dataloader.SitesLoader(config.DataLoaderConfig, flag="train")
     eval_dataLoader = archaeological_georgia_biostyle_dataloader.SitesLoader(config.DataLoaderConfig, flag="eval")
@@ -188,7 +168,14 @@ if __name__ == '__main__':
     print("Training model for lr={0}, weight_decay={1}, scheduler={2}".format(best_hyperparameters['lr'],
                                                                               best_hyperparameters['weight_decay'],
                                                                               best_hyperparameters['scheduler']))
+    # train with segformer default loss: BCE
     model = SegFormerModel(lr=best_hyperparameters['lr'], weight_decay=best_hyperparameters['weight_decay'],
                            scheduler=best_hyperparameters['scheduler'])
-    Train(model, label_dataLoader, eval_dataLoader, feature_extractor, save_model=True,
+    Train(model, label_dataLoader, eval_dataLoader, save_model=True,
           loss_plot="Loss Performance of SegFormer")
+
+    # train with dice loss
+    # model = SegFormerModel(lr=best_hyperparameters['lr'], weight_decay=best_hyperparameters['weight_decay'],
+    #                        scheduler=best_hyperparameters['scheduler'], use_dice_loss=True)
+    # Train(model, label_dataLoader, eval_dataLoader, save_model=True,
+    #       loss_plot="Loss Performance of SegFormer dice loss")

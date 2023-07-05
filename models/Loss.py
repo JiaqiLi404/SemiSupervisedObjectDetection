@@ -39,6 +39,17 @@ def diceCoeff(pred, gt, smooth_value: float = 1.0, activation="softmax2d"):
     score = (2 * tp + smooth_value) / (fp + fn + smooth_value)
     return torch.mean(score)
 
+def mse(predicted, gt):
+    # the 'Mean Squared Error' between the two images is the
+    # sum of the squared difference between the two images;
+    # NOTE: the two images must have the same dimension
+    N = gt.size(0)
+    gt_flat = gt.reshape(N, -1)
+    pred_flat = predicted.reshape(N, -1)
+    err = torch.sum((gt_flat - pred_flat) ** 2, 1)
+    err /= (gt.shape[0] * gt.shape[1])
+    
+    return torch.mean(err)
 
 class SegmentationLoss(nn.Module):
     __name__ = 'seg_loss'
@@ -51,6 +62,8 @@ class SegmentationLoss(nn.Module):
 
     def forward(self, y_pred, y_true):
         ##store the similarity score of the prediction and the true value
+        if self.loss_type == 'mse':
+            return mse(y_pred, y_true)
         class_score = []
         for i in range(0, self.num_classes):
             if self.loss_type == 'dice':
