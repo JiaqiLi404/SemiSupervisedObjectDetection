@@ -71,9 +71,9 @@ def Train(model, train_dataloader, eval_dataLoader, epoch_num=config.ModelConfig
                 if len(eval_epoch_loss) % visdom_display_freq == 0:
                     model.show_mask(vis_eval, img[0], mask[0], title="Ground Truth")
                     model.show_mask(vis_eval, img[0], predict_mask[0], title="Predicted Mask epoch {0}".format(epoch_i))
-        eval_loss = sum(eval_epoch_loss) / len(eval_dataLoader)
+        eval_loss = sum(eval_epoch_loss)/ len(eval_dataLoader)
         eval_loss_path.append(eval_loss)
-        fps = (time.time() - s_time) / len(eval_dataLoader)
+        fps = len(eval_dataLoader) / (time.time() - s_time)
 
         print(
             'epoch {0} train_loss: {1:.6f} eval_loss: {2:.6f} fps {3:.2f}'.format(epoch_i, train_loss, eval_loss, fps))
@@ -158,7 +158,7 @@ if __name__ == '__main__':
         "weight_decay": 5e-5,
         "scheduler": 0.97
     }
-    # best_hyperparameters = Hyperparameter_Tuning(lr=[1e-4,7e-5,5e-5,3e-5,1e-5,5e-6], weight_decay=[5e-5], scheduler=[0.97])
+    best_hyperparameters = Hyperparameter_Tuning(lr=[7e-5,5e-5,3e-5,1e-5,5e-6], weight_decay=[5e-5], scheduler=[0.97])
 
     label_dataLoader = archaeological_georgia_biostyle_dataloader.SitesLoader(config.DataLoaderConfig, flag="train")
     eval_dataLoader = archaeological_georgia_biostyle_dataloader.SitesLoader(config.DataLoaderConfig, flag="eval")
@@ -168,14 +168,9 @@ if __name__ == '__main__':
     print("Training model for lr={0}, weight_decay={1}, scheduler={2}".format(best_hyperparameters['lr'],
                                                                               best_hyperparameters['weight_decay'],
                                                                               best_hyperparameters['scheduler']))
-    # train with segformer default loss: BCE
+
     model = SegFormerModel(lr=best_hyperparameters['lr'], weight_decay=best_hyperparameters['weight_decay'],
                            scheduler=best_hyperparameters['scheduler'])
     Train(model, label_dataLoader, eval_dataLoader, save_model=True,
           loss_plot="Loss Performance of SegFormer")
 
-    # train with dice loss
-    # model = SegFormerModel(lr=best_hyperparameters['lr'], weight_decay=best_hyperparameters['weight_decay'],
-    #                        scheduler=best_hyperparameters['scheduler'], use_dice_loss=True)
-    # Train(model, label_dataLoader, eval_dataLoader, save_model=True,
-    #       loss_plot="Loss Performance of SegFormer dice loss")
