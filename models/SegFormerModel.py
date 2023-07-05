@@ -7,7 +7,7 @@ from transformers import SegformerForSemanticSegmentation, SegformerModel
 import numpy as np
 
 class SegFormerModel(nn.Module):
-    def __init__(self, pretrain_weight=None, lr=None, weight_decay=None, scheduler=None, device="cuda:0", use_dice_loss=False, num_labels=1, *args,
+    def __init__(self, pretrain_weight=None, lr=None, weight_decay=None, scheduler=None, device="cuda:0", use_dice_loss=True, num_labels=1, *args,
                  **kwargs):
         super().__init__(*args, **kwargs)
         self.model = SegformerForSemanticSegmentation.from_pretrained("nvidia/mit-b5", ignore_mismatched_sizes=True,
@@ -58,12 +58,6 @@ class SegFormerModel(nn.Module):
             return upsampled_logits
         return upsampled_logits, outputs.loss
 
-    def loss_function(self, pred, gt):
-        valid_mask = (gt >= 0).float()
-        loss_fct = nn.BCEWithLogitsLoss(reduction="none")
-        loss = loss_fct(pred, gt.float())
-        loss = (loss * valid_mask).mean()
-        return loss
 
     def eval_one_epoch(self, imgs, masks): # return loss, predict_mask
         self.model.eval()
