@@ -5,13 +5,14 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-
 ''' this function is used to calculate the dice coefficient, which shows the similarity of two samples
 parameter pred: predicted class
             gt: ground truth
   smooth_value:
     activation: activation function
 '''
+
+
 def diceCoeff(pred, gt, smooth_value: float = 1.0, activation="softmax2d"):
     """ computational formula:
         dice = (2 * tp) / (2 * tp + fp + fn)
@@ -39,6 +40,7 @@ def diceCoeff(pred, gt, smooth_value: float = 1.0, activation="softmax2d"):
     score = (2 * tp + smooth_value) / (fp + fn + smooth_value)
     return torch.mean(score)
 
+
 def mse(predicted, gt):
     # the 'Mean Squared Error' between the two images is the
     # sum of the squared difference between the two images;
@@ -48,8 +50,9 @@ def mse(predicted, gt):
     pred_flat = predicted.reshape(N, -1)
     err = torch.sum((gt_flat - pred_flat) ** 2, 1)
     err /= (gt.shape[0] * gt.shape[1])
-    
+
     return torch.mean(err)
+
 
 class SegmentationLoss(nn.Module):
     __name__ = 'seg_loss'
@@ -62,6 +65,10 @@ class SegmentationLoss(nn.Module):
 
     def forward(self, y_pred, y_true):
         ##store the similarity score of the prediction and the true value
+        if len(y_pred.shape) == 3:
+            y_pred = y_pred.unsqueeze(dim=1)
+        if len(y_true.shape) == 3:
+            y_true = y_true.unsqueeze(dim=1)
         if self.loss_type == 'mse':
             return mse(y_pred, y_true)
         class_score = []

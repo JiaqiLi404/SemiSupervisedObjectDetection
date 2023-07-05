@@ -62,6 +62,8 @@ class SegFormerModel(nn.Module):
         if mask is None:
             return predict_masks
         if self.use_dice_loss:
+            a=torch.sum(predict_masks)
+            b=torch.sum(mask)
             loss = self.loss_function(predict_masks, mask)
             return loss, predict_masks
         return loss, predict_masks
