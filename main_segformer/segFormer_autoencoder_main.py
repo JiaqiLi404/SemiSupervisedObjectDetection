@@ -1,6 +1,7 @@
 from itertools import product
 import os.path
 import sys
+
 sys.path.append('../')
 import archaeological_georgia_biostyle_dataloader
 import torch
@@ -35,7 +36,8 @@ def Prediction():
                 model.show_mask(vis_pred, img[0], predict_mask[0], title="Predicted Mask epoch{0}".format(dataPatches))
 
 
-def Train(model, train_dataloader, eval_dataLoader, train_unlabel_dataloader, eval_unlabel_dataloader, epoch_num=config.ModelConfig['epoch_num'],
+def Train(model, train_dataloader, eval_dataLoader, train_unlabel_dataloader, eval_unlabel_dataloader,
+          epoch_num=config.ModelConfig['epoch_num'],
           save_model=False, loss_plot=None):
     train_loss_path = []
     eval_loss_path = []
@@ -53,7 +55,8 @@ def Train(model, train_dataloader, eval_dataLoader, train_unlabel_dataloader, ev
 
             if len(train_epoch_loss) % visdom_display_freq == 0:
                 model.show_mask(vis_train, img[0], None, title="Ground Truth")
-                model.show_mask(vis_train, recovery[0].detach(), None, title="Recovered Image epoch {0}".format(epoch_i))
+                model.show_mask(vis_train, recovery[0].detach(), None,
+                                title="Recovered Image epoch {0}".format(epoch_i))
 
         if train_unlabel_dataloader:
             for img, _, _, _ in train_unlabel_dataloader:
@@ -63,9 +66,11 @@ def Train(model, train_dataloader, eval_dataLoader, train_unlabel_dataloader, ev
 
                 if len(train_epoch_loss) % visdom_display_freq == 0:
                     model.show_mask(vis_train, img[0], None, title="Ground Truth")
-                    model.show_mask(vis_train, recovery[0].detach(), None, title="Recovered Image epoch {0}".format(epoch_i))
+                    model.show_mask(vis_train, recovery[0].detach(), None,
+                                    title="Recovered Image epoch {0}".format(epoch_i))
 
-        train_loss = sum(train_epoch_loss) / ( len(train_dataloader) + ( len(train_unlabel_dataloader) if train_unlabel_dataloader else 0 ) )
+        train_loss = sum(train_epoch_loss) / (
+                len(train_dataloader) + (len(train_unlabel_dataloader) if train_unlabel_dataloader else 0))
         train_loss_path.append(train_loss)
         model.scheduler_step()
 
@@ -81,7 +86,8 @@ def Train(model, train_dataloader, eval_dataLoader, train_unlabel_dataloader, ev
 
                 if len(eval_epoch_loss) % visdom_display_freq == 0:
                     model.show_mask(vis_eval, img[0], None, title="Ground Truth")
-                    model.show_mask(vis_eval, recovery[0].detach(), None, title="Recovered Image epoch {0}".format(epoch_i))
+                    model.show_mask(vis_eval, recovery[0].detach(), None,
+                                    title="Recovered Image epoch {0}".format(epoch_i))
             if eval_unlabel_dataloader:
                 for img, _, _, _ in eval_unlabel_dataloader:
                     # forward
@@ -90,31 +96,34 @@ def Train(model, train_dataloader, eval_dataLoader, train_unlabel_dataloader, ev
 
                     if len(eval_epoch_loss) % visdom_display_freq == 0:
                         model.show_mask(vis_eval, img[0], None, title="Ground Truth")
-                        model.show_mask(vis_eval, recovery[0].detach(), None, title="Recovered Image epoch {0}".format(epoch_i))
-        eval_loss = sum(eval_epoch_loss) /  ( len(eval_dataLoader) + ( len(eval_unlabel_dataloader) if eval_unlabel_dataloader else 0 ) )
+                        model.show_mask(vis_eval, recovery[0].detach(), None,
+                                        title="Recovered Image epoch {0}".format(epoch_i))
+        eval_loss = sum(eval_epoch_loss) / (
+                len(eval_dataLoader) + (len(eval_unlabel_dataloader) if eval_unlabel_dataloader else 0))
         eval_loss_path.append(eval_loss)
         fps = (time.time() - s_time) / len(eval_dataLoader)
 
         print(
             'epoch {0} train_loss: {1:.6f} eval_loss: {2:.6f} fps {3:.2f}'.format(epoch_i, train_loss, eval_loss, fps))
 
-        if eval_loss < best_loss:
-            best_loss = eval_loss
+        if train_loss + eval_loss < best_loss:
+            best_loss = train_loss + eval_loss
             best_epoch = epoch_i
             if save_model:
                 torch.save(model.state_dict(),
                            os.path.join('{0}/checkpoints'.format(root_path),
                                         'segFormer_autoencoder_epoch_{0}_train_{1:.3f}_eval_{2:.3f}_fps_{3:.2f}.pth'
-                                        .format(epoch_i, train_loss, best_loss, fps)))
+                                        .format(epoch_i, train_loss, eval_loss, fps)))
+
 
     if loss_plot:
         print('**********FINISH**********')
         plt.title(loss_plot)
         plt.xlabel('epoch')
         plt.ylabel('loss')
-        plt.ylim((0, 1))
-        plt.plot(range(config.ModelConfig['epoch_num']), train_loss_path, color='blue', label='train')
-        plt.plot(range(config.ModelConfig['epoch_num']), eval_loss_path, color='yellow', label='eval')
+        plt.ylim((0, 100))
+        plt.plot(range(len(train_loss_path)), train_loss_path, color='blue', label='train')
+        plt.plot(range(len(eval_loss_path)), eval_loss_path, color='yellow', label='eval')
         plt.legend()
         plt.savefig(os.path.join('{0}/figures'.format(root_path), "_".join(loss_plot.split(" ")) + ".png"))
         plt.show()
@@ -147,10 +156,9 @@ def Hyperparameter_Tuning(lr, weight_decay, scheduler, epochs=30):
     }
     for (_lr, _weight_decay, _scheduler) in hyperparameter_sets[:9]:
         print("Training model (hyperparameter tunning) for lr={0}, weight_decay={1}, scheduler={2}"
-                .format(_lr, _weight_decay, _scheduler))
+              .format(_lr, _weight_decay, _scheduler))
         model = SegFormerModel(lr=_lr, weight_decay=_weight_decay, scheduler=_scheduler, num_labels=3)
-        loss, _ = Train(model, train_dataloader, validation_dataloader, None,
-                                    epoch_num=epochs, save_model=False)
+        loss, _ = Train(model, train_dataloader, validation_dataloader, None, epoch_num=epochs, save_model=False)
         print(
             "    Model loss (hyperparameter tunning) for lr={0}, weight_decay={1}, scheduler={2}: {3:.4f}".format(
                 _lr, _weight_decay, _scheduler, loss))
@@ -173,7 +181,7 @@ if __name__ == '__main__':
 
     # set hyperparameter list
     best_hyperparameters = {
-        "lr": 5e-5,
+        "lr": 2e-5,
         "weight_decay": 5e-5,
         "scheduler": 0.97
     }
@@ -182,31 +190,37 @@ if __name__ == '__main__':
     label_dataLoader = archaeological_georgia_biostyle_dataloader.SitesLoader(config.DataLoaderConfig, flag="train")
     # unlabel_dataLoader = archaeological_georgia_biostyle_dataloader.SitesLoader(config.DataLoaderConfig, flag="unlabeled")
     eval_dataLoader = archaeological_georgia_biostyle_dataloader.SitesLoader(config.DataLoaderConfig, flag="eval")
-    
+
     unlabel_dataset = archaeological_georgia_biostyle_dataloader.SitesBingBook(config.DataLoaderConfig["unlabeledset"],
-                                                                             None,
-                                                                             config.DataLoaderConfig["transforms"], has_mask=False)
+                                                                               None,
+                                                                               config.DataLoaderConfig["transforms"],
+                                                                               has_mask=False)
     train_unlabel_data_num = math.floor(len(unlabel_dataset) * 0.8)
     train_dataset, validation_dataset = torch.utils.data.random_split(unlabel_dataset, [train_unlabel_data_num,
-                                                                                      len(unlabel_dataset) - train_unlabel_data_num])
+                                                                                        len(unlabel_dataset) - train_unlabel_data_num])
     train_unlabel_dataloader = archaeological_georgia_biostyle_dataloader.SitesLoader(config.DataLoaderConfig,
-                                                                              dataset=train_dataset, flag="unlabeled")
+                                                                                      dataset=train_dataset,
+                                                                                      flag="unlabeled")
     validation_unlabel_dataloader = archaeological_georgia_biostyle_dataloader.SitesLoader(config.DataLoaderConfig,
-                                                                                   dataset=validation_dataset,
-                                                                                   flag="unlabeled")
-    
+                                                                                           dataset=validation_dataset,
+                                                                                           flag="unlabeled")
+
     print('Labeled data batch amount: {0}, evaluation data batch amount: {1}'.format(len(label_dataLoader),
                                                                                      len(eval_dataLoader)))
-    
-    print('In unlabeled samples, training batch amount: {0}, evaluation batch amount: {1}'.format(len(train_unlabel_dataloader),
-                                                                                                  len(validation_unlabel_dataloader)))
+
+    print('In unlabeled samples, training batch amount: {0}, evaluation batch amount: {1}'.format(
+        len(train_unlabel_dataloader),
+        len(validation_unlabel_dataloader)))
 
     print("Training model for lr={0}, weight_decay={1}, scheduler={2}".format(best_hyperparameters['lr'],
                                                                               best_hyperparameters['weight_decay'],
                                                                               best_hyperparameters['scheduler']))
 
     # train with dice loss
-    model = SegFormerModel(lr=best_hyperparameters['lr'], weight_decay=best_hyperparameters['weight_decay'],
+    model = SegFormerModel(pretrain_weight='segFormer_autoencoder_epoch_21_train_32.218_eval_16.115_fps_3.58.pth',
+                           lr=best_hyperparameters['lr'],
+                           weight_decay=best_hyperparameters['weight_decay'],
                            scheduler=best_hyperparameters['scheduler'], num_labels=3)
-    Train(model, label_dataLoader, eval_dataLoader, train_unlabel_dataloader, validation_unlabel_dataloader, save_model=True,
-          loss_plot="Loss Performance of SegFormer Autoencoder")
+    Train(model, label_dataLoader, eval_dataLoader, train_unlabel_dataloader, validation_unlabel_dataloader,
+          save_model=True,
+          loss_plot="Loss Performance of SegFormer Autoencoder", epoch_num=50)

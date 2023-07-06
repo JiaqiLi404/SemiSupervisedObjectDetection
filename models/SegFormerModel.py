@@ -21,7 +21,7 @@ class SegFormerModel(nn.Module):
 
         if pretrain_weight:
             self.load_state_dict(
-                torch.load(os.path.join('checkpoints', pretrain_weight), map_location=torch.device(device)))
+                torch.load(os.path.join('../checkpoints', pretrain_weight), map_location=torch.device(device)))
             print("Pretrained model loaded")
 
         self.optimizer = torch.optim.Adam(filter(lambda x: x.requires_grad is not False, self.model.parameters()),
