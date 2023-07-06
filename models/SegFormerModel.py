@@ -37,6 +37,16 @@ class SegFormerModel(nn.Module):
         self.use_dice_loss = use_dice_loss
         self.num_labels = num_labels
 
+    def frozen_encoder(self, layers_num=None):
+        if layers_num is None:
+            layers_num = self.model.config.num_encoder_blocks
+        for param in self.model.segformer.encoder.block[:layers_num].parameters():
+            param.requires_grad = False
+
+    def unfroze_encoder(self):
+        for param in self.model.segformer.encoder.block.parameters():
+            param.requires_grad = True
+
     def predict(self, img, mask=None, isEval=True):
         if not isEval:
             self.model.eval()
@@ -110,6 +120,8 @@ class SegFormerModel(nn.Module):
                                                          mode='bilinear',
                                                          align_corners=False)
 
+            upsampled_logits = self.activation_fn(upsampled_logits)
+
             loss = self.mse_loss_function(imgs, upsampled_logits)
 
             return loss, upsampled_logits
@@ -129,6 +141,8 @@ class SegFormerModel(nn.Module):
                                                      size=size[2:],  # (height, width)
                                                      mode='bilinear',
                                                      align_corners=False)
+
+        upsampled_logits = self.activation_fn(upsampled_logits)
 
         loss = self.mse_loss_function(imgs, upsampled_logits)
         self.train_from_loss(loss)

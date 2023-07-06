@@ -183,6 +183,10 @@ def train(pretrain_weight, teacher_lr, student_lr, weight_decay, scheduler, supe
         loss_path_train_teacher.append(train_loss_teacher)
         loss_path_eval_teacher.append(eval_loss_teacher)
 
+        if epoch_i != 0 and epoch_i % 5 == 0:
+            teacher_model.load_state_dict(student_model.state_dict())
+            print('!!! teacher reset !!!')
+
     if plot_loss:
         title = 't_lr-{0} s_lr-{1} supervise_w-{2} threshold-{3} epoch-{4}' \
             .format(teacher_lr, student_lr, supervise_weight, PESUDO_MAKS_THRESHOLD, epochs)
@@ -249,7 +253,8 @@ if __name__ == '__main__':
 
     # hyperparameters_grids = {'lr': [2e-5, 5e-6, 1e-6], 'weight_decay': [5e-5], 'scheduler': [0.97],
     #                          'supervise_loss_weight': [0.8], 'threshold': [0.7, 0.8, 0.85]}
-    hyperparameters_grids = {'t_lr': [5e-6, 1e-6, 5e-7], 's_lr': [5e-5,2e-5], 'weight_decay': [5e-5], 'scheduler': [0.97],
+    hyperparameters_grids = {'t_lr': [5e-6, 1e-6, 5e-7], 's_lr': [5e-5, 3e-5], 'weight_decay': [5e-5],
+                             'scheduler': [0.97],
                              'supervise_loss_weight': [0.8], 'threshold': [0.75, 0.8]}
     hyperparameters_sets = product(hyperparameters_grids['t_lr'], hyperparameters_grids['s_lr'],
                                    hyperparameters_grids['weight_decay'], hyperparameters_grids['scheduler'],
@@ -259,29 +264,30 @@ if __name__ == '__main__':
     best_loss = 100
     best_hyperparameters = {
         "t_lr": 1e-6,
-        "s_lr": 2e-5,
+        "s_lr": 3e-5,
         "weight_decay": 5e-5,
         "scheduler": 0.97,
         'supervise_loss_weight': 0.8,
         'threshold': 0.8
     }
-    for (_t_lr, _s_lr, _weight_decay, _scheduler, _supervise_weight, _threshold) in hyperparameters_sets[:12]:
-        PESUDO_MAKS_THRESHOLD = _threshold
-        loss = train(pretrain_weight, _t_lr, _s_lr, _weight_decay, _scheduler, _supervise_weight, validation_dataloader,
-                     epochs=10, plot_loss=True)
-        print(
-            "    Model loss (hyperparameter tunning) for teacher_lr={0}, tstudent_lr={1}, supervise_weight={2}, threshold={3}: {4:.4f}".format(
-                _t_lr, _s_lr, _supervise_weight, _threshold, loss))
-        if loss < best_loss:
-            best_loss = loss
-            best_hyperparameters = {
-                "t_lr": _t_lr,
-                "s_lr": _s_lr,
-                "weight_decay": _weight_decay,
-                "scheduler": _scheduler,
-                'supervise_loss_weight': _supervise_weight,
-                'threshold': _threshold
-            }
+
+    # for (_t_lr, _s_lr, _weight_decay, _scheduler, _supervise_weight, _threshold) in hyperparameters_sets[:12]:
+    #     PESUDO_MAKS_THRESHOLD = _threshold
+    #     loss = train(pretrain_weight, _t_lr, _s_lr, _weight_decay, _scheduler, _supervise_weight, validation_dataloader,
+    #                  epochs=10, plot_loss=True)
+    #     print(
+    #         "    Model loss (hyperparameter tunning) for teacher_lr={0}, tstudent_lr={1}, supervise_weight={2}, threshold={3}: {4:.4f}".format(
+    #             _t_lr, _s_lr, _supervise_weight, _threshold, loss))
+    #     if loss < best_loss:
+    #         best_loss = loss
+    #         best_hyperparameters = {
+    #             "t_lr": _t_lr,
+    #             "s_lr": _s_lr,
+    #             "weight_decay": _weight_decay,
+    #             "scheduler": _scheduler,
+    #             'supervise_loss_weight': _supervise_weight,
+    #             'threshold': _threshold
+    #         }
 
     loss = train(pretrain_weight, best_hyperparameters['t_lr'], best_hyperparameters['s_lr'],
                  best_hyperparameters['weight_decay'], best_hyperparameters['scheduler'],
