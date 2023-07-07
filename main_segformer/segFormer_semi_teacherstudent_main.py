@@ -51,9 +51,9 @@ def threshold_pseudo_masks(img, masks, allow_throw_sample=True):
         confident_predicted = torch.stack(confident_predicted)
         confident_mask = torch.stack(confident_mask)
     else:
-        confident_img = confident_mask = confident_predicted = None
+        confident_img = confident_mask  = None
 
-    return confident_img, confident_mask, confident_predicted, confidence, confident_losses / len(confident_img)
+    return confident_img, confident_mask, confident_predicted, confidence, confident_losses / len(confident_predicted)
 
 
 def train(pretrain_weight, teacher_lr, student_lr, weight_decay, scheduler, supervise_weight, this_eval_dataloader,
@@ -83,13 +83,15 @@ def train(pretrain_weight, teacher_lr, student_lr, weight_decay, scheduler, supe
                 predicted_masks = teacher_model.predict(img)
             confident_img, confident_mask, confident_predicted, confidence, teacher_loss_pseudo = \
                 threshold_pseudo_masks(img, predicted_masks)
+
             if confident_img is not None:
                 image_used += confident_img.size(0)
-                teacher_model.train_from_loss(teacher_loss_pseudo)
-                teacher_model.show_mask(vis_teacher, confident_img[0], confident_predicted[0],
-                                        title="Teacher Predict epoch{0}".format(epoch_i))
-                teacher_model.show_mask(vis_teacher, confident_img[0], confident_mask[0],
-                                        title="Teacher Pseudo Mask epoch{0}".format(epoch_i))
+                if epoch_i % 3 == 0:
+                    teacher_model.train_from_loss(teacher_loss_pseudo)
+                    teacher_model.show_mask(vis_teacher, confident_img[0], confident_predicted[0],
+                                            title="Teacher Predict epoch{0}".format(epoch_i))
+                    teacher_model.show_mask(vis_teacher, confident_img[0], confident_mask[0],
+                                            title="Teacher Pseudo Mask epoch{0}".format(epoch_i))
             print('teacher_pseudo_loss:', float(teacher_loss_pseudo))
 
         print('epoch {0}: {1} unlabeled images used'.format(epoch_i, image_used))
@@ -106,8 +108,8 @@ def train(pretrain_weight, teacher_lr, student_lr, weight_decay, scheduler, supe
                     teacher_predicted_masks = teacher_model.predict(img)
             else:
                 teacher_predicted_masks_origin = teacher_model.predict(img)
-                teacher_predicted_masks = teacher_predicted_masks_origin + 0.16 * ground_truth
-                teacher_predicted_masks -= 0.08
+                teacher_predicted_masks = teacher_predicted_masks_origin + 0.2 * ground_truth
+                teacher_predicted_masks -= 0.1
                 teacher_predicted_masks = torch.where(torch.gt(teacher_predicted_masks, 1), 1, teacher_predicted_masks)
                 teacher_predicted_masks = torch.where(torch.lt(teacher_predicted_masks, 0), 0, teacher_predicted_masks)
                 confident_img, confident_mask, confident_predicted, confidence, teacher_loss_gt = \
@@ -127,7 +129,7 @@ def train(pretrain_weight, teacher_lr, student_lr, weight_decay, scheduler, supe
             epoch_loss_teacher.append(float(teacher_loss_gt.item()))
 
             # show results
-            if len(epoch_loss) % 4 == 0:
+            if len(epoch_loss) % 10 == 0:
                 student_model.show_mask(vis_student, img[0], ground_truth[0], title="Ground Truth")
                 student_model.show_mask(vis_student, img[0], teacher_predicted_masks[0],
                                         title="Teacher Predict (train) epoch{0}".format(epoch_i))
@@ -158,7 +160,7 @@ def train(pretrain_weight, teacher_lr, student_lr, weight_decay, scheduler, supe
                 valid_loss.append(float(student_loss.item()))
 
                 # show the image to Visdom
-                if len(valid_loss) % 2 == 0:
+                if len(valid_loss) % 8 == 0:
                     student_model.show_mask(vis_eval, img[0], real_mask[0], title="Ground Truth")
                     student_model.show_mask(vis_eval, img[0], predict_mask_teacher[0],
                                             title="Teacher Predict (eval) epoch{0}".format(epoch_i))
@@ -284,9 +286,9 @@ if __name__ == '__main__':
         'threshold': 0.8
     }
 
-    for (_t_lr, _s_lr, _weight_decay, _scheduler, _supervise_weight, _threshold) in hyperparameters_sets[:12]:
+    for (_t_lr, _s_lr, _weight_decay, _scheduler, _supervise_weight, _threshold) in hyperparameters_sets[:18]:
         PESUDO_MAKS_THRESHOLD = _threshold
-        loss = train(pretrain_weight, _t_lr, _s_lr, _weight_decay, _scheduler, _supervise_weight, validation_dataloader,
+        loss = train(pretrain_weight, _t_lr, _s_lr, _weight_decay, _scheduler, _supervise_weight, eval_dataLoader,
                      epochs=10, plot_loss=True)
         print(
             "    Model loss (hyperparameter tunning) for teacher_lr={0}, tstudent_lr={1}, supervise_weight={2}, threshold={3}: {4:.4f}".format(
