@@ -21,7 +21,7 @@ CONFIDENT_THRESHOLD = 0.7
 
 # python -m visdom.server
 
-def threshold_pseudo_masks(img, masks):
+def threshold_pseudo_masks(img, masks, allow_throw_sample=True):
     N = masks.size(0)
     # masks = masks.squeeze(dim=1)
     masks_flat = masks.reshape(N, -1)
@@ -38,11 +38,14 @@ def threshold_pseudo_masks(img, masks):
     confident_img = []
     confident_mask = []
     confident_predicted = []
+    confident_losses = torch.tensor(0, dtype=torch.float32, requires_grad=True).cuda()
     for n in range(N):
-        if pixel_num[n] > 1000 and confidence[n] >= CONFIDENT_THRESHOLD:
+        if not allow_throw_sample or (pixel_num[n] > 1000 and confidence[n] >= CONFIDENT_THRESHOLD):
             confident_img.append(img[n])
             confident_predicted.append(masks[n])
             confident_mask.append(pseudo_mask[n])
+            confident_loss = loss_func(masks[n], pseudo_mask[n])
+            confident_losses += confident_loss
     if len(confident_img) != 0:
         confident_img = torch.stack(confident_img)
         confident_predicted = torch.stack(confident_predicted)
@@ -50,12 +53,12 @@ def threshold_pseudo_masks(img, masks):
     else:
         confident_img = confident_mask = confident_predicted = None
 
-    return confident_img, confident_mask, confident_predicted, confidence
+    return confident_img, confident_mask, confident_predicted, confidence, confident_losses / len(confident_img)
 
 
 def train(pretrain_weight, teacher_lr, student_lr, weight_decay, scheduler, supervise_weight, this_eval_dataloader,
-          epochs=config.ModelConfig['epoch_num'],
-          save_checkpoints=False, plot_loss=False):
+          epochs=config.ModelConfig['epoch_num'], reset_teacher=False, denoise_label=True, save_checkpoints=False,
+          plot_loss=False):
     print('**************** Train *******************')
     print('teacher_lr: {0} student_lr: {1} supervise_weight: {2} threshold: {3}'.format(teacher_lr, student_lr,
                                                                                         supervise_weight,
@@ -78,13 +81,11 @@ def train(pretrain_weight, teacher_lr, student_lr, weight_decay, scheduler, supe
             with torch.no_grad():
                 img = img.to(device=device, dtype=torch.float32)
                 predicted_masks = teacher_model.predict(img)
-                confident_img, confident_mask, confident_predicted, confidence = \
-                    threshold_pseudo_masks(img, predicted_masks)
-                teacher_loss_pseudo = 0
+            confident_img, confident_mask, confident_predicted, confidence, teacher_loss_pseudo = \
+                threshold_pseudo_masks(img, predicted_masks)
             if confident_img is not None:
                 image_used += confident_img.size(0)
-                confident_mask = confident_mask.squeeze(1)
-                teacher_loss_pseudo, confident_predicted = teacher_model.train_one_epoch(confident_img, confident_mask)
+                teacher_model.train_from_loss(teacher_loss_pseudo)
                 teacher_model.show_mask(vis_teacher, confident_img[0], confident_predicted[0],
                                         title="Teacher Predict epoch{0}".format(epoch_i))
                 teacher_model.show_mask(vis_teacher, confident_img[0], confident_mask[0],
@@ -98,14 +99,27 @@ def train(pretrain_weight, teacher_lr, student_lr, weight_decay, scheduler, supe
             ground_truth = ground_truth.to(device=device, dtype=torch.float32)
             # ground_truth = ground_truth.unsqueeze(1)
             # train teacher one epoch
-            teacher_loss_gt, _ = teacher_model.train_one_epoch(img, ground_truth)
-            # predict from the teacher
-            with torch.no_grad():
-                teacher_predicted_masks = teacher_model.predict(img)
+            if not denoise_label:
+                teacher_loss_gt, _ = teacher_model.train_one_epoch(img, ground_truth)
+                # predict from the teacher
+                with torch.no_grad():
+                    teacher_predicted_masks = teacher_model.predict(img)
+            else:
+                teacher_predicted_masks_origin = teacher_model.predict(img)
+                teacher_predicted_masks = teacher_predicted_masks_origin + 0.16 * ground_truth
+                teacher_predicted_masks -= 0.08
+                teacher_predicted_masks = torch.where(torch.gt(teacher_predicted_masks, 1), 1, teacher_predicted_masks)
+                teacher_predicted_masks = torch.where(torch.lt(teacher_predicted_masks, 0), 0, teacher_predicted_masks)
+                confident_img, confident_mask, confident_predicted, confidence, teacher_loss_gt = \
+                    threshold_pseudo_masks(img, teacher_predicted_masks, allow_throw_sample=False)
+                teacher_loss_gt = loss_func(teacher_predicted_masks_origin, confident_mask)
+                teacher_predicted_masks = confident_mask
+
+            teacher_model.train_from_loss(teacher_loss_gt)
+
             # predict from the student
             student_loss, student_predicted_masks = student_model.predict(img, ground_truth)
             # learn from both teacher and ground truth
-
             self_supervise_loss = loss_func(student_predicted_masks, teacher_predicted_masks)
             loss = supervise_weight * student_loss + (1 - supervise_weight) * self_supervise_loss
             student_model.train_from_loss(loss)
@@ -183,9 +197,9 @@ def train(pretrain_weight, teacher_lr, student_lr, weight_decay, scheduler, supe
         loss_path_train_teacher.append(train_loss_teacher)
         loss_path_eval_teacher.append(eval_loss_teacher)
 
-        # if epoch_i != 0 and epoch_i % 5 == 0:
-        #     teacher_model.load_state_dict(student_model.state_dict())
-        #     print('!!! teacher reset !!!')
+        if reset_teacher and epoch_i != 0 and epoch_i % 5 == 0:
+            teacher_model.load_state_dict(student_model.state_dict())
+            print('!!! teacher reset !!!')
 
     if plot_loss:
         title = 't_lr-{0} s_lr-{1} supervise_w-{2} threshold-{3} epoch-{4}' \
@@ -220,7 +234,8 @@ def train(pretrain_weight, teacher_lr, student_lr, weight_decay, scheduler, supe
         plt.plot(range(epochs), loss_path_train_teacher, color='green', label='teacher-train')
         plt.plot(range(epochs), loss_path_eval_teacher, color='blue', label='teacher-eval')
         plt.legend()
-        plt.savefig(os.path.join('../figures', 'Loss Performance of SegFormer-Pseudo Teacher-Student ' + title + '.png'))
+        plt.savefig(
+            os.path.join('../figures', 'Loss Performance of SegFormer-Pseudo Teacher-Student ' + title + '.png'))
         plt.show()
 
     return best_loss
@@ -251,11 +266,9 @@ if __name__ == '__main__':
     eval_dataLoader = archaeological_georgia_biostyle_dataloader.SitesLoader(config.DataLoaderConfig, flag="eval")
     print('Labeled data batch amount: ', len(unlabel_dataLoader) + len(label_dataLoader))
 
-    # hyperparameters_grids = {'lr': [2e-5, 5e-6, 1e-6], 'weight_decay': [5e-5], 'scheduler': [0.97],
-    #                          'supervise_loss_weight': [0.8], 'threshold': [0.7, 0.8, 0.85]}
-    hyperparameters_grids = {'t_lr': [5e-6, 1e-6, 5e-7], 's_lr': [5e-5, 3e-5], 'weight_decay': [5e-5],
+    hyperparameters_grids = {'t_lr': [5e-6, 1e-6, 5e-7], 's_lr': [5e-5, 3e-5, 1e-5], 'weight_decay': [5e-5],
                              'scheduler': [0.97],
-                             'supervise_loss_weight': [0.8], 'threshold': [0.75, 0.8]}
+                             'supervise_loss_weight': [0.8, 0.7], 'threshold': [0.75, 0.8, 0.85]}
     hyperparameters_sets = product(hyperparameters_grids['t_lr'], hyperparameters_grids['s_lr'],
                                    hyperparameters_grids['weight_decay'], hyperparameters_grids['scheduler'],
                                    hyperparameters_grids['supervise_loss_weight'], hyperparameters_grids['threshold'],
@@ -271,23 +284,23 @@ if __name__ == '__main__':
         'threshold': 0.8
     }
 
-    # for (_t_lr, _s_lr, _weight_decay, _scheduler, _supervise_weight, _threshold) in hyperparameters_sets[:12]:
-    #     PESUDO_MAKS_THRESHOLD = _threshold
-    #     loss = train(pretrain_weight, _t_lr, _s_lr, _weight_decay, _scheduler, _supervise_weight, validation_dataloader,
-    #                  epochs=10, plot_loss=True)
-    #     print(
-    #         "    Model loss (hyperparameter tunning) for teacher_lr={0}, tstudent_lr={1}, supervise_weight={2}, threshold={3}: {4:.4f}".format(
-    #             _t_lr, _s_lr, _supervise_weight, _threshold, loss))
-    #     if loss < best_loss:
-    #         best_loss = loss
-    #         best_hyperparameters = {
-    #             "t_lr": _t_lr,
-    #             "s_lr": _s_lr,
-    #             "weight_decay": _weight_decay,
-    #             "scheduler": _scheduler,
-    #             'supervise_loss_weight': _supervise_weight,
-    #             'threshold': _threshold
-    #         }
+    for (_t_lr, _s_lr, _weight_decay, _scheduler, _supervise_weight, _threshold) in hyperparameters_sets[:12]:
+        PESUDO_MAKS_THRESHOLD = _threshold
+        loss = train(pretrain_weight, _t_lr, _s_lr, _weight_decay, _scheduler, _supervise_weight, validation_dataloader,
+                     epochs=10, plot_loss=True)
+        print(
+            "    Model loss (hyperparameter tunning) for teacher_lr={0}, tstudent_lr={1}, supervise_weight={2}, threshold={3}: {4:.4f}".format(
+                _t_lr, _s_lr, _supervise_weight, _threshold, loss))
+        if loss < best_loss:
+            best_loss = loss
+            best_hyperparameters = {
+                "t_lr": _t_lr,
+                "s_lr": _s_lr,
+                "weight_decay": _weight_decay,
+                "scheduler": _scheduler,
+                'supervise_loss_weight': _supervise_weight,
+                'threshold': _threshold
+            }
 
     loss = train(pretrain_weight, best_hyperparameters['t_lr'], best_hyperparameters['s_lr'],
                  best_hyperparameters['weight_decay'], best_hyperparameters['scheduler'],

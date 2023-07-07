@@ -67,8 +67,14 @@ class SegmentationLoss(nn.Module):
         ##store the similarity score of the prediction and the true value
         if len(y_pred.shape) == 3:
             y_pred = y_pred.unsqueeze(dim=1)
+        elif len(y_pred.shape) == 2:
+            y_pred = y_pred.unsqueeze(dim=0)
+            y_pred = y_pred.unsqueeze(dim=0)
         if len(y_true.shape) == 3:
             y_true = y_true.unsqueeze(dim=1)
+        elif len(y_true.shape) == 2:
+            y_true = y_true.unsqueeze(dim=0)
+            y_true = y_true.unsqueeze(dim=0)
         if self.loss_type == 'mse':
             return mse(y_pred, y_true)
         class_score = []
