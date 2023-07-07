@@ -48,7 +48,7 @@ class SegFormerModel(nn.Module):
         for param in self.model.segformer.encoder.block.parameters():
             param.requires_grad = True
 
-    def predict(self, img, mask=None, isEval=True, loss='dice'):
+    def predict(self, img, mask=None, isEval=True, use_loss='dice'):
         if not isEval:
             self.model.eval()
         img = img.to(self.device)
@@ -69,11 +69,12 @@ class SegFormerModel(nn.Module):
         # upsampled_logits = upsampled_logits.argmax(dim=1)
         predict_masks = self.activation_fn(upsampled_logits)
         predict_masks = torch.squeeze(predict_masks, 1)
-        loss = outputs.loss
         if mask is None:
             return predict_masks
-        if loss == 'dice':
+        if use_loss == 'dice':
             loss = self.loss_function(predict_masks, mask)
+        elif use_loss == 'bce':
+            loss = outputs.loss
         else:
             loss = self.loss_argmax_function(predict_masks, mask)
 
@@ -84,9 +85,9 @@ class SegFormerModel(nn.Module):
         with torch.no_grad():
             return self.predict(imgs, masks)
 
-    def train_one_epoch(self, imgs, masks, loss='dice'):  # return loss, predict_mask
+    def train_one_epoch(self, imgs, masks, use_loss='dice'):  # return loss, predict_mask
         self.model.train()
-        loss, predict_masks = self.predict(imgs, masks, isEval=False, loss='dice')
+        loss, predict_masks = self.predict(imgs, masks, isEval=False, use_loss='dice')
         self.train_from_loss(loss)
         return loss, predict_masks
 
