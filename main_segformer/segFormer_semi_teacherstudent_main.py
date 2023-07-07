@@ -159,13 +159,13 @@ def train(pretrain_weight, teacher_lr, student_lr, weight_decay, scheduler, supe
         if eval_loss < best_loss:
             best_loss = eval_loss
             if save_checkpoints:
-                torch.save(student_model.state_dict(), os.path.join('checkpoints',
+                torch.save(student_model.state_dict(), os.path.join('../checkpoints',
                                                                     'self-pseudo seg-former student epoch {0} train {1:.3f} eval {2:.3f} fps {3:.2f}.pth'
                                                                     .format(epoch_i, train_loss, best_loss, fps)))
         if eval_loss_teacher < best_loss:
             best_loss = eval_loss_teacher
             if save_checkpoints:
-                torch.save(teacher_model.state_dict(), os.path.join('checkpoints',
+                torch.save(teacher_model.state_dict(), os.path.join('../checkpoints',
                                                                     'self-pseudo seg-former teacher epoch {0} train {1:.3f} eval {2:.3f} fps {3:.2f}.pth'
                                                                     .format(epoch_i, train_loss, best_loss, fps)))
 
@@ -183,9 +183,9 @@ def train(pretrain_weight, teacher_lr, student_lr, weight_decay, scheduler, supe
         loss_path_train_teacher.append(train_loss_teacher)
         loss_path_eval_teacher.append(eval_loss_teacher)
 
-        if epoch_i != 0 and epoch_i % 5 == 0:
-            teacher_model.load_state_dict(student_model.state_dict())
-            print('!!! teacher reset !!!')
+        # if epoch_i != 0 and epoch_i % 5 == 0:
+        #     teacher_model.load_state_dict(student_model.state_dict())
+        #     print('!!! teacher reset !!!')
 
     if plot_loss:
         title = 't_lr-{0} s_lr-{1} supervise_w-{2} threshold-{3} epoch-{4}' \
@@ -198,7 +198,7 @@ def train(pretrain_weight, teacher_lr, student_lr, weight_decay, scheduler, supe
         plt.plot(range(epochs), loss_path_train, color='blue', label='train')
         plt.plot(range(epochs), loss_path_eval, color='yellow', label='eval')
         plt.legend()
-        plt.savefig(os.path.join('figures', 'Loss Performance of SegFormer-Pseudo Student ' + title + '.png'))
+        plt.savefig(os.path.join('../figures', 'Loss Performance of SegFormer-Pseudo Student ' + title + '.png'))
         plt.show()
 
         plt.title('Loss Performance of SegFormer-Pseudo (Teacher)')
@@ -208,7 +208,7 @@ def train(pretrain_weight, teacher_lr, student_lr, weight_decay, scheduler, supe
         plt.plot(range(epochs), loss_path_train_teacher, color='blue', label='train')
         plt.plot(range(epochs), loss_path_eval_teacher, color='yellow', label='eval')
         plt.legend()
-        plt.savefig(os.path.join('figures', 'Loss Performance of SegFormer-Pseudo Teacher ' + title + '.png'))
+        plt.savefig(os.path.join('../figures', 'Loss Performance of SegFormer-Pseudo Teacher ' + title + '.png'))
         plt.show()
 
         plt.title('Loss Performance of SegFormer-Pseudo (Teacher-Student)')
@@ -220,7 +220,7 @@ def train(pretrain_weight, teacher_lr, student_lr, weight_decay, scheduler, supe
         plt.plot(range(epochs), loss_path_train_teacher, color='green', label='teacher-train')
         plt.plot(range(epochs), loss_path_eval_teacher, color='blue', label='teacher-eval')
         plt.legend()
-        plt.savefig(os.path.join('figures', 'Loss Performance of SegFormer-Pseudo Teacher-Student ' + title + '.png'))
+        plt.savefig(os.path.join('../figures', 'Loss Performance of SegFormer-Pseudo Teacher-Student ' + title + '.png'))
         plt.show()
 
     return best_loss

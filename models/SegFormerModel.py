@@ -31,7 +31,8 @@ class SegFormerModel(nn.Module):
         self.scheduler = torch.optim.lr_scheduler.ExponentialLR(self.optimizer,
                                                                 gamma=scheduler)  # config.ModelConfig['scheduler']
         # loss_function = torch.nn.L1Loss()
-        self.loss_function = myLoss.SegmentationLoss(1, loss_type='dice_argmax', activation='none')
+        self.loss_argmax_function = myLoss.SegmentationLoss(1, loss_type='dice_argmax', activation='none')
+        self.loss_function = myLoss.SegmentationLoss(1, loss_type='dice', activation='none')
         self.mse_loss_function = myLoss.SegmentationLoss(1, loss_type='mse')
         self.activation_fn = torch.nn.Sigmoid()
         self.use_dice_loss = use_dice_loss
@@ -47,7 +48,7 @@ class SegFormerModel(nn.Module):
         for param in self.model.segformer.encoder.block.parameters():
             param.requires_grad = True
 
-    def predict(self, img, mask=None, isEval=True):
+    def predict(self, img, mask=None, isEval=True, loss='dice'):
         if not isEval:
             self.model.eval()
         img = img.to(self.device)
@@ -71,9 +72,11 @@ class SegFormerModel(nn.Module):
         loss = outputs.loss
         if mask is None:
             return predict_masks
-        if self.use_dice_loss:
+        if loss == 'dice':
             loss = self.loss_function(predict_masks, mask)
-            return loss, predict_masks
+        else:
+            loss = self.loss_argmax_function(predict_masks, mask)
+
         return loss, predict_masks
 
     def eval_one_epoch(self, imgs, masks):  # return loss, predict_mask
@@ -81,9 +84,9 @@ class SegFormerModel(nn.Module):
         with torch.no_grad():
             return self.predict(imgs, masks)
 
-    def train_one_epoch(self, imgs, masks):  # return loss, predict_mask
+    def train_one_epoch(self, imgs, masks, loss='dice'):  # return loss, predict_mask
         self.model.train()
-        loss, predict_masks = self.predict(imgs, masks, isEval=False)
+        loss, predict_masks = self.predict(imgs, masks, isEval=False, loss='dice')
         self.train_from_loss(loss)
         return loss, predict_masks
 

@@ -101,7 +101,7 @@ def Train(model, train_dataloader, eval_dataLoader, epoch_num=config.ModelConfig
     return best_loss, best_epoch
 
 
-def Hyperparameter_Tuning(lr, weight_decay, scheduler, epochs=30):
+def Hyperparameter_Tuning(lr, weight_decay, scheduler, epochs=10):
     label_dataset = archaeological_georgia_biostyle_dataloader.SitesBingBook(config.DataLoaderConfig["dataset"],
                                                                              config.DataLoaderConfig["maskdir"],
                                                                              config.DataLoaderConfig["transforms"])
@@ -157,7 +157,7 @@ if __name__ == '__main__':
         "weight_decay": 5e-5,
         "scheduler": 0.97
     }
-    best_hyperparameters = Hyperparameter_Tuning(lr=[7e-5,5e-5,3e-5,1e-5,5e-6], weight_decay=[5e-5], scheduler=[0.97])
+    best_hyperparameters = Hyperparameter_Tuning(lr=[5e-4,1e-5,4e-5,1e-5,5e-6], weight_decay=[5e-5], scheduler=[0.97])
 
     label_dataLoader = archaeological_georgia_biostyle_dataloader.SitesLoader(config.DataLoaderConfig, flag="train")
     eval_dataLoader = archaeological_georgia_biostyle_dataloader.SitesLoader(config.DataLoaderConfig, flag="eval")
