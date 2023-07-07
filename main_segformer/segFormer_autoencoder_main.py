@@ -217,8 +217,7 @@ if __name__ == '__main__':
                                                                               best_hyperparameters['scheduler']))
 
     # train with dice loss
-    model = SegFormerModel(pretrain_weight='segFormer_autoencoder_epoch_21_train_32.218_eval_16.115_fps_3.58.pth',
-                           lr=best_hyperparameters['lr'],
+    model = SegFormerModel(lr=best_hyperparameters['lr'],
                            weight_decay=best_hyperparameters['weight_decay'],
                            scheduler=best_hyperparameters['scheduler'], num_labels=3)
     Train(model, label_dataLoader, eval_dataLoader, train_unlabel_dataloader, validation_unlabel_dataloader,

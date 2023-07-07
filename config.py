@@ -34,7 +34,7 @@ DataLoaderConfig = dict(
                   max_pixel_value=1, always_apply=True),
         Resize(height=ModelConfig['imgh'], width=ModelConfig['imgw'])
     ]),
-    batch_size=7 if platform.system().lower() == 'windows' else 20,
+    batch_size=6 if platform.system().lower() == 'windows' else 20,
     num_workers=10,
     drop_last=False,  # whether abandon the samples out of batch
     shuffle=True,  # whether to choose the samples in random order

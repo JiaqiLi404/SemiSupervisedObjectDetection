@@ -75,6 +75,9 @@ class SegmentationLoss(nn.Module):
         for i in range(0, self.num_classes):
             if self.loss_type == 'dice':
                 class_score.append(diceCoeff(y_pred[:, i:i + 1, :], y_true[:, i:i + 1, :], activation=self.activation))
+            elif self.loss_type == 'dice_argmax':
+                y_pred = torch.where(y_pred >= 0.5, 1, 0)
+                class_score.append(diceCoeff(y_pred[:, i:i + 1, :], y_true[:, i:i + 1, :], activation=self.activation))
             elif self.loss_type == 'cross_entropy':
                 class_score.append(F.cross_entropy(y_pred, y_true.float(), ignore_index=-1))
             else:
@@ -82,4 +85,5 @@ class SegmentationLoss(nn.Module):
         ##?Question: it should be count the dice loss first like 1-dice_score then caculate the mean or 
         ##                                                     score it first then mean
         mean_loss = sum(class_score) / len(class_score)
+        mean_loss.requires_grad_(True)
         return 1 - mean_loss

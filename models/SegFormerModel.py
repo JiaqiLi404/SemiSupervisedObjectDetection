@@ -31,7 +31,7 @@ class SegFormerModel(nn.Module):
         self.scheduler = torch.optim.lr_scheduler.ExponentialLR(self.optimizer,
                                                                 gamma=scheduler)  # config.ModelConfig['scheduler']
         # loss_function = torch.nn.L1Loss()
-        self.loss_function = myLoss.SegmentationLoss(1, loss_type='dice', activation='none')
+        self.loss_function = myLoss.SegmentationLoss(1, loss_type='dice_argmax', activation='none')
         self.mse_loss_function = myLoss.SegmentationLoss(1, loss_type='mse')
         self.activation_fn = torch.nn.Sigmoid()
         self.use_dice_loss = use_dice_loss
