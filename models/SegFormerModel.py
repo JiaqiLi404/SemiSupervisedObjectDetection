@@ -83,7 +83,7 @@ class SegFormerModel(nn.Module):
     def eval_one_epoch(self, imgs, masks):  # return loss, predict_mask
         self.model.eval()
         with torch.no_grad():
-            return self.predict(imgs, masks)
+            return self.predict(imgs, masks,use_loss='argmax')
 
     def train_one_epoch(self, imgs, masks, use_loss='dice'):  # return loss, predict_mask
         self.model.train()
