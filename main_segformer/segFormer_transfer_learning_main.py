@@ -161,7 +161,7 @@ if __name__ == '__main__':
         "weight_decay": 5e-5,
         "scheduler": 0.97
     }
-    best_hyperparameters = Hyperparameter_Tuning(lr=[1e-4, 7e-5, 4e-5, 1e-5, 5e-6], weight_decay=[5e-5],
+    best_hyperparameters = Hyperparameter_Tuning(lr=[5e-5, 1e-5, 5e-6, 1e-6, 5e-7], weight_decay=[5e-5],
                                                  scheduler=[0.97])
 
     label_dataLoader = archaeological_georgia_biostyle_dataloader.SitesLoader(config.DataLoaderConfig, flag="train")

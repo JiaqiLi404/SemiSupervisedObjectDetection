@@ -22,8 +22,10 @@ class SegFormerModel(nn.Module):
         if pretrain_weight:
             pretrain_weight_context = torch.load(os.path.join('../checkpoints', pretrain_weight),
                                                  map_location=torch.device(device))
-            pretrain_weight_context.pop('model.decode_head.classifier.weight')
-            pretrain_weight_context.pop('model.decode_head.classifier.bias')
+            pretrain_weight_context['model.decode_head.classifier.weight'] = \
+                pretrain_weight_context['model.decode_head.classifier.weight'][0].unsqueeze(dim=0)
+            pretrain_weight_context['model.decode_head.classifier.bias'] = \
+                pretrain_weight_context['model.decode_head.classifier.bias'][0].unsqueeze(dim=0)
             self.load_state_dict(pretrain_weight_context, strict=False)
             print("Pretrained model loaded")
 
