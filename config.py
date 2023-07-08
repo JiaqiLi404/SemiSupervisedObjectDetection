@@ -21,6 +21,8 @@ DataLoaderConfig = dict(
     evalset="E:\\Research\\Datas\\AreialImage\\ArchaeologicalSitesDetection\\georgia_cleaned_bing_test",
     unlabeledset="E:\\Research\\Datas\\AreialImage\\ArchaeologicalSitesDetection\\new_images",
     pseudoset="E:\\Research\\Datas\\AreialImage\\ArchaeologicalSitesDetection\\pseudo",
+    labeledcalssified='E:\\Research\\Datas\\AreialImage\\ArchaeologicalSitesDetection\\georgia_cleaned_all_classified',
+    unlabeledcalssified='E:\\Research\\Datas\\AreialImage\\ArchaeologicalSitesDetection\\new_images_classified',
     maskdir="E:\\Research\\Datas\\AreialImage\\ArchaeologicalSitesDetection\\masks",
     transforms=Compose([
         RandomCrop(500, 500),
