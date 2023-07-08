@@ -1,5 +1,5 @@
 import os
-
+from collections import OrderedDict
 import torch
 import torch.nn as nn
 from transformers import SegformerForSemanticSegmentation
@@ -20,8 +20,11 @@ class SegFormerModel(nn.Module):
         self.device = device
 
         if pretrain_weight:
-            self.load_state_dict(
-                torch.load(os.path.join('../checkpoints', pretrain_weight), map_location=torch.device(device)))
+            pretrain_weight_context = torch.load(os.path.join('../checkpoints', pretrain_weight),
+                                                 map_location=torch.device(device))
+            pretrain_weight_context.pop('model.decode_head.classifier.weight')
+            pretrain_weight_context.pop('model.decode_head.classifier.bias')
+            self.load_state_dict(pretrain_weight_context, strict=False)
             print("Pretrained model loaded")
 
         self.optimizer = torch.optim.Adam(filter(lambda x: x.requires_grad is not False, self.model.parameters()),
@@ -83,7 +86,7 @@ class SegFormerModel(nn.Module):
     def eval_one_epoch(self, imgs, masks):  # return loss, predict_mask
         self.model.eval()
         with torch.no_grad():
-            return self.predict(imgs, masks,use_loss='argmax')
+            return self.predict(imgs, masks, use_loss='argmax')
 
     def train_one_epoch(self, imgs, masks, use_loss='dice'):  # return loss, predict_mask
         self.model.train()
