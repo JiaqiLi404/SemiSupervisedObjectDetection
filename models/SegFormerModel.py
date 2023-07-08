@@ -1,8 +1,7 @@
 import os
-from collections import OrderedDict
 import torch
 import torch.nn as nn
-from transformers import SegformerForSemanticSegmentation
+from segformer_source.models.segformer import SegformerForSemanticSegmentation
 
 import models.Loss as myLoss
 
@@ -43,12 +42,46 @@ class SegFormerModel(nn.Module):
         self.use_dice_loss = use_dice_loss
         self.num_labels = num_labels
 
-    def frozen_encoder(self, layers_num=None):
+    def frozen_encoder(self, layers_num=None, layers=None):
+        '''
+        example:
+        segFormer:4 blocks
+
+        frozen_encoder(layers_num=2) frozen the top 2 blocks
+        frozen_encoder(layers=[2,3]) frozen the bottom 2 blocks
+        '''
         if layers_num is None:
             layers_num = self.model.config.num_encoder_blocks
-        for param in self.model.segformer.encoder.block[:layers_num].parameters():
-            param.requires_grad = False
+        if layers is not None:
+            for layer_id in layers:
+                for param in self.model.segformer.encoder.block[layer_id].parameters():
+                    param.requires_grad = False
+        else:
+            for param in self.model.segformer.encoder.block[:layers_num].parameters():
+                param.requires_grad = False
         print('encoder is frozen')
+
+    def add_prompt_token(self, token_num_per_block=[10, 10, 10, 10], isSamePerLayer=True):
+        '''
+        example:
+        segFormer:4 blocks, each block has [3,6,40,3] layers, respectively
+
+        add_prompt_token([10, 10, 10, 10],True) adding 10 learnable tokens to each block(layer),
+                                                tokens in each layer of the same block are the same. tokens:4*10
+        frozen_encoder([10, 10, 10, 10],False) adding 10 learnable tokens to each block(layer),
+                                                tokens in each layer of the same block are different. tokens:4*10*(3+6+40+3)
+        '''
+        for i, layer in enumerate(token_num_per_block):
+            if isSamePerLayer:
+                self.model.segformer.encoder.prompt_tokens[i] = torch.rand(token_num_per_block[i],
+                                                                           self.model.config.hidden_sizes[i],
+                                                                           requires_grad=True).cuda()
+            else:
+                self.model.segformer.encoder.prompt_tokens[i] = torch.rand(self.model.config.depths[i],
+                                                                           token_num_per_block[i],
+                                                                           self.model.config.hidden_sizes[i],
+                                                                           requires_grad=True).cuda()
+        print('prompt tokens are added')
 
     def unfroze_encoder(self):
         for param in self.model.segformer.encoder.block.parameters():
