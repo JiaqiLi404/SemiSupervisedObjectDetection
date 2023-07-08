@@ -129,7 +129,10 @@ def Hyperparameter_Tuning(lr, weight_decay, scheduler, epochs=10):
             for _scheduler in scheduler:
                 print("Training model (hyperparameter tunning) for lr={0}, weight_decay={1}, scheduler={2}"
                       .format(_lr, _weight_decay, _scheduler))
-                model = SegFormerModel(lr=_lr, weight_decay=_weight_decay, scheduler=_scheduler)
+                model = SegFormerModel(
+                    pretrain_weight='segFormer_autoencoder_epoch_18_train_22.885_eval_15.023_fps_3.37.pth',
+                    lr=_lr, weight_decay=_weight_decay, scheduler=_scheduler)
+                model.frozen_encoder()
                 loss, trained_epoch = Train(model, train_dataloader, validation_dataloader,
                                             epoch_num=epochs, save_model=False)
                 print(
@@ -158,7 +161,8 @@ if __name__ == '__main__':
         "weight_decay": 5e-5,
         "scheduler": 0.97
     }
-    # best_hyperparameters = Hyperparameter_Tuning(lr=[1e-4,7e-5,4e-5,1e-5,5e-6], weight_decay=[5e-5], scheduler=[0.97])
+    best_hyperparameters = Hyperparameter_Tuning(lr=[1e-4, 7e-5, 4e-5, 1e-5, 5e-6], weight_decay=[5e-5],
+                                                 scheduler=[0.97])
 
     label_dataLoader = archaeological_georgia_biostyle_dataloader.SitesLoader(config.DataLoaderConfig, flag="train")
     eval_dataLoader = archaeological_georgia_biostyle_dataloader.SitesLoader(config.DataLoaderConfig, flag="eval")
@@ -172,5 +176,6 @@ if __name__ == '__main__':
     model = SegFormerModel(pretrain_weight='segFormer_autoencoder_epoch_18_train_22.885_eval_15.023_fps_3.37.pth',
                            lr=best_hyperparameters['lr'], weight_decay=best_hyperparameters['weight_decay'],
                            scheduler=best_hyperparameters['scheduler'])
+    model.frozen_encoder()
     Train(model, label_dataLoader, eval_dataLoader, save_model=True,
           loss_plot="Loss Performance of SegFormer")

@@ -46,6 +46,7 @@ class SegFormerModel(nn.Module):
             layers_num = self.model.config.num_encoder_blocks
         for param in self.model.segformer.encoder.block[:layers_num].parameters():
             param.requires_grad = False
+        print('encoder is frozen')
 
     def unfroze_encoder(self):
         for param in self.model.segformer.encoder.block.parameters():
