@@ -72,6 +72,8 @@ class SegFormerModel(nn.Module):
                                                 tokens in each layer of the same block are different. tokens:4*10*(3+6+40+3)
         '''
         for i, layer in enumerate(token_num_per_block):
+            if token_num_per_block[i] == 0:
+                continue
             if isSamePerLayer:
                 self.model.segformer.encoder.prompt_tokens[i] = torch.rand(token_num_per_block[i],
                                                                            self.model.config.hidden_sizes[i],

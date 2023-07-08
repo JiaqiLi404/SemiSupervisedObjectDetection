@@ -176,7 +176,7 @@ if __name__ == '__main__':
     model = SegFormerModel(pretrain_weight=None,
                            lr=best_hyperparameters['lr'], weight_decay=best_hyperparameters['weight_decay'],
                            scheduler=best_hyperparameters['scheduler'])
-    model.frozen_encoder(layers=[1, 3])
-    model.add_prompt_token([10, 10, 10, 10])
+    model.frozen_encoder(layers=[1, 2, 3])
+    model.add_prompt_token([5, 5, 5, 0])
     Train(model, label_dataLoader, eval_dataLoader, save_model=True,
           loss_plot="Loss Performance of SegFormer")
