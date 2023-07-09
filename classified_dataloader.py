@@ -56,12 +56,11 @@ class SitesClassified(Dataset):
 
 
 class SitesLoader(DataLoader):
-    def __init__(self, config, dataset=None, flag="labeled"):
+    def __init__(self, config, category=None, flag="labeled"):
         self.config = config
         self.flag = flag
-        if dataset:
-            pass
-        elif flag == 'labeled':
+        self.category=category
+        if flag == 'labeled':
             dataset = SitesClassified(self.config["labeledcalssified"], self.config["category"], self.config["maskdir"],
                                       self.config["transforms"])
         elif flag == 'unlabeled':

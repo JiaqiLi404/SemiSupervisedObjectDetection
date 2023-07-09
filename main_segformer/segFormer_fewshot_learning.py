@@ -5,7 +5,7 @@ import os.path
 import sys
 
 sys.path.append('../')
-import archaeological_georgia_biostyle_dataloader
+import classified_dataloader
 import torch
 import config
 import visdom
@@ -20,22 +20,6 @@ visdom_display_freq = 5  # send image to visdom every 5 epoch
 
 
 # python -m visdom.server
-
-def Prediction():
-    unlabel_dataLoader = archaeological_georgia_biostyle_dataloader \
-        .SitesLoader(config.DataLoaderConfig, flag="unlabeled")
-    model = SegFormerModel()  # with pre-trained weight
-    model.eval()
-    with torch.no_gard():
-        dataPatches = 0
-        for img, _, _, _ in unlabel_dataLoader:
-            predict_mask = model.predict(
-                img=img)  # logits are of shape (batch_size, num_labels, height/4, width/4)
-            dataPatches += 1
-            if dataPatches % visdom_display_freq == 0:
-                model.show_mask(vis_pred, img[0], None, title="Raw Image {0}".format(dataPatches))
-                model.show_mask(vis_pred, img[0], predict_mask[0], title="Predicted Mask epoch{0}".format(dataPatches))
-
 
 def Train(model, train_dataloader, eval_dataLoader, epoch_num=config.ModelConfig['epoch_num'],
           save_model=False, loss_plot=None):
@@ -163,7 +147,7 @@ if __name__ == '__main__':
     }
     # best_hyperparameters = Hyperparameter_Tuning(lr=[1e-4,7e-5,4e-5,1e-5,5e-6], weight_decay=[5e-5], scheduler=[0.97])
 
-    label_dataLoader = archaeological_georgia_biostyle_dataloader.SitesLoader(config.DataLoaderConfig, flag="train")
+    label_dataLoader = classified_dataloader.SitesLoader(config.DataLoaderConfig, flag="eval")
     eval_dataLoader = archaeological_georgia_biostyle_dataloader.SitesLoader(config.DataLoaderConfig, flag="eval")
     print('Labeled data batch amount: {0}, evaluation data batch amount: {1}'.format(len(label_dataLoader),
                                                                                      len(eval_dataLoader)))
