@@ -128,7 +128,7 @@ class SegFormerModel(nn.Module):
 
     def train_one_epoch(self, imgs, masks, use_loss='dice'):  # return loss, predict_mask
         self.model.train()
-        loss, predict_masks = self.predict(imgs, masks, isEval=False, use_loss='dice')
+        loss, predict_masks = self.predict(imgs, masks, isEval=False, use_loss=use_loss)
         self.train_from_loss(loss)
         return loss, predict_masks
 
