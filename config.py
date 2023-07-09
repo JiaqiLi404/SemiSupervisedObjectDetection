@@ -38,7 +38,7 @@ DataLoaderConfig = dict(
     ]),
     batch_size=6 if platform.system().lower() == 'windows' else 20,
     few_shot_batch_size=3,
-    num_workers=4,
+    num_workers=0,
     drop_last=False,  # whether abandon the samples out of batch
     shuffle=True,  # whether to choose the samples in random order
     pin_memory=True  # whether to keep the data in pin memory

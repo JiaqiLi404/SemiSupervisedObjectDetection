@@ -46,9 +46,19 @@ def train(pretrain_weight, _lr, _weight_decay, _scheduler, category_dataloaders,
 
         for iter_i in range(iteration_num):
             # randomly pick two categories
-            [category_1_dataloader, category_2_dataloader] = random.sample(category_dataloaders, 2)
-            category_1_img, category_1_mask = next(category_1_dataloader)
-            category_2_img, category_2_mask = next(category_2_dataloader)
+            [category_1, category_2] = random.sample(list(range(len(category_dataloaders))), 2)
+            try:
+                category_1_img, category_1_mask = next(category_dataloaders_iter[category_1])
+            except StopIteration:
+                category_dataloaders_iter[category_1]=iter(category_dataloaders[category_1])
+                category_1_img, category_1_mask = next(category_dataloaders_iter[category_1])
+
+            try:
+                category_2_img, category_2_mask = next(category_dataloaders_iter[category_2])
+            except StopIteration:
+                category_dataloaders_iter[category_2]=iter(category_dataloaders[category_2])
+                category_2_img, category_2_mask = next(category_dataloaders_iter[category_2])
+
             category_1_img = category_1_img.to(device=device, dtype=torch.float32)
             category_2_img = category_2_img.to(device=device, dtype=torch.float32)
             category_1_mask = category_1_mask.to(device=device, dtype=torch.float32)
@@ -97,7 +107,7 @@ if __name__ == '__main__':
         "weight_decay": 5e-5,
         "scheduler": 0.97
     }
-    hyperparameters_grids = {'lr': [5e-7], 'weight_decay': [5e-5], 'scheduler': [0.97], }
+    hyperparameters_grids = {'lr': [5e-5], 'weight_decay': [5e-5], 'scheduler': [0.97], }
     hyperparameters_sets = product(hyperparameters_grids['lr'], hyperparameters_grids['weight_decay'],
                                    hyperparameters_grids['scheduler'], shuffle=True)
 
