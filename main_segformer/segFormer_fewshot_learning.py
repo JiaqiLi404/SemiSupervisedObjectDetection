@@ -25,7 +25,7 @@ visdom_display_freq = 5  # send image to visdom every 5 epoch
 # python -m visdom.server
 
 def train(pretrain_weight, _lr, _weight_decay, _scheduler, category_dataloaders, eval_dataLoader,
-          epoch_num=config.ModelConfig['epoch_num'], iteration_num=26, save_model=False, loss_plot=None):
+          epoch_num=config.ModelConfig['epoch_num'], iteration_num=35, save_model=False, loss_plot=None):
     print('**************** Train *******************')
     print('lr: {0}'.format(_lr))
     model = SegModel(pretrain_weight, _lr, _weight_decay, _scheduler)
@@ -44,6 +44,9 @@ def train(pretrain_weight, _lr, _weight_decay, _scheduler, category_dataloaders,
     for epoch_i in range(epoch_num):
         epoch_loss = []
         model.train()
+
+        for loader in category_dataloaders:
+            loader.reshuffle()
 
         for iter_i in range(iteration_num):
             # randomly pick two categories
@@ -66,21 +69,51 @@ def train(pretrain_weight, _lr, _weight_decay, _scheduler, category_dataloaders,
             category_2_mask = category_2_mask.to(device=device, dtype=torch.float32)
 
             # supervised loss
-            category_1_loss, category_1_predicted = model.train_one_epoch(category_1_img, category_1_mask)
-            category_2_loss, category_2_predicted = model.train_one_epoch(category_2_img, category_2_mask)
-            loss_categories[category_1] = loss_categories[category_1] * 0.5 + category_1_loss * 0.5
-            loss_categories[category_2] = loss_categories[category_2] * 0.5 + category_2_loss * 0.5
+            category_1_loss, category_1_predicted, category_1_cls_token = model.predict(category_1_img, category_1_mask,
+                                                                                        output_cls_token=True,
+                                                                                        isEval=False)
+            category_2_loss, category_2_predicted, category_2_cls_token = model.predict(category_2_img, category_2_mask,
+                                                                                        output_cls_token=True,
+                                                                                        isEval=False)
 
-            # intra-loss
+            # batch_size = min(category_1_cls_token.shape[0], category_2_cls_token.shape[0])
+            # # inter-loss
+            # inter_loss = compute_similarity(category_1_cls_token[:batch_size, :, :],
+            #                                 category_2_cls_token[:batch_size, :, :])
+            # # intra-loss
+            # intra_loss_1 = 1 - compute_similarity(category_1_cls_token[:batch_size // 2, :, :],
+            #                                       category_1_cls_token[-(batch_size // 2):, :, :])
+            # intra_loss_2 = 1 - compute_similarity(category_2_cls_token[:batch_size // 2, :, :],
+            #                                       category_2_cls_token[-(batch_size // 2):, :, :])
+            # # intra_loss = (intra_loss_1 + intra_loss_2) / 2
+            #
+            # category_1_summation_loss = (category_1_loss + inter_loss + intra_loss_1) / 3
+            # category_2_summation_loss = (category_2_loss + inter_loss + intra_loss_2) / 3
 
+            intra_loss_1 = 0
+            intra_loss_2 = 0
+            inter_loss = 0
+            category_1_summation_loss = category_1_loss
+            category_2_summation_loss = category_2_loss
+            summation_loss = (category_1_summation_loss + category_2_summation_loss) / 2
 
-            epoch_loss.append(float(category_1_loss.item() + category_2_loss.item()) / 2)
+            loss_categories[category_1] = loss_categories[category_1] * 0.5 + category_1_summation_loss * 0.5
+            loss_categories[category_2] = loss_categories[category_2] * 0.5 + category_2_summation_loss * 0.5
+
+            model.train_from_loss(summation_loss)
+            epoch_loss.append(float(summation_loss))
 
             # show results
             if len(epoch_loss) % 5 == 0:
                 model.show_mask(vis_train, category_1_img[0], category_1_mask[0], title="Ground Truth")
                 model.show_mask(vis_train, category_1_img[0], category_1_predicted[0], "Predicted")
-                print("loss:", epoch_loss[-1])
+                print(
+                    "summation loss:{0:.3f} cat_1_sum_loss:{1:.3f} cat_1_cls_loss:{2:.3f} cat_1_intra_loss:{3:.3f} inter_loss:{4:.3f}".format(
+                        epoch_loss[-1], category_1_summation_loss, category_1_loss, intra_loss_1, inter_loss))
+                print(
+                    "summation loss:{0:.3f} cat_2_sum_loss:{1:.3f} cat_2_cls_loss:{2:.3f} cat_2_intra_loss:{3:.3f} inter_loss:{4:.3f}".format(
+                        epoch_loss[-1], category_2_summation_loss, category_2_loss, intra_loss_2, inter_loss))
+                print(' ')
 
         train_loss = sum(epoch_loss) / iteration_num
         loss_path_train.append(train_loss)
@@ -106,7 +139,16 @@ def train(pretrain_weight, _lr, _weight_decay, _scheduler, category_dataloaders,
         eval_loss = sum(valid_loss) / len(eval_dataLoader)
         loss_path_eval.append(eval_loss)
         fps = len(eval_dataLoader) / (time.time() - s_time)
-        print('epoch {0} train_loss: {1:.6f} eval_loss: {2:.6f}'.format(epoch_i, train_loss, eval_loss))
+        print('epoch {0} train_loss: {1:.6f} eval_loss: {2:.6f}\n'.format(epoch_i, train_loss, eval_loss))
+
+        # checkpoint
+        if eval_loss < train_best_loss:
+            train_best_loss = eval_loss
+            if save_model:
+                torch.save(model.state_dict(),
+                           os.path.join('../checkpoints',
+                                        'few-shot seg-former epoch {0} train {1:.3f} eval {2:.3f} fps {3:.2f}.pth'
+                                        .format(epoch_i, train_loss, eval_loss, fps)))
 
     if loss_plot:
         print('**********FINISH**********')
@@ -123,11 +165,19 @@ def train(pretrain_weight, _lr, _weight_decay, _scheduler, category_dataloaders,
     return train_best_loss
 
 
+def compute_similarity(mat1, mat2):
+    mat1 = mat1.squeeze(1)
+    mat2 = mat2.squeeze(1)
+    return torch.mean(similarity_loss(mat1, mat2))
+
+
 if __name__ == '__main__':
     device = "cuda:0"
     vis_train = visdom.Visdom(env="FewShot_Train")
     vis_eval = visdom.Visdom(env="FewShot_Evaluation")
     vis_pred = visdom.Visdom(env="FewShot_Prediction")
+
+    similarity_loss = torch.nn.CosineSimilarity(dim=1)
 
     # set hyperparameter list
     best_hyperparameters = {
@@ -135,7 +185,7 @@ if __name__ == '__main__':
         "weight_decay": 5e-5,
         "scheduler": 0.97
     }
-    hyperparameters_grids = {'lr': [5e-5], 'weight_decay': [5e-5], 'scheduler': [0.97], }
+    hyperparameters_grids = {'lr': [8e-5, 5e-5, 2e-5, 5e-6], 'weight_decay': [5e-5], 'scheduler': [0.97], }
     hyperparameters_sets = product(hyperparameters_grids['lr'], hyperparameters_grids['weight_decay'],
                                    hyperparameters_grids['scheduler'], shuffle=True)
 
@@ -150,15 +200,19 @@ if __name__ == '__main__':
     print('Labeled data batch amount: {0}, evaluation data batch amount: {1}'.format(batch_sum, len(eval_dataLoader)))
 
     best_loss = 100
-    for (_lr, _weight_decay, _scheduler) in hyperparameters_sets[:18]:
-        loss = train(None, _lr, _weight_decay, _scheduler, category_loaders, eval_dataLoader, epoch_num=50,
-                     loss_plot=True)
-        print(
-            "    Model loss (hyperparameter tunning) for lr={0}: {1:.4f}".format(_lr, loss))
-        if loss < best_loss:
-            best_loss = loss
-            best_hyperparameters = {
-                "lr": _lr,
-                "weight_decay": _weight_decay,
-                "scheduler": _scheduler,
-            }
+    # for (_lr, _weight_decay, _scheduler) in hyperparameters_sets[:18]:
+    #     loss = train(None, _lr, _weight_decay, _scheduler, category_loaders, eval_dataLoader, epoch_num=20,
+    #                  loss_plot=True, save_model=False)
+    #     print(
+    #         "    Model loss (hyperparameter tunning) for lr={0}: {1:.4f}".format(_lr, loss))
+    #     if loss < best_loss:
+    #         best_loss = loss
+    #         best_hyperparameters = {
+    #             "lr": _lr,
+    #             "weight_decay": _weight_decay,
+    #             "scheduler": _scheduler,
+    #         }
+
+    loss = train(None, best_hyperparameters['lr'], best_hyperparameters['weight_decay'],
+                 best_hyperparameters['scheduler'], category_loaders, eval_dataLoader, epoch_num=80,
+                 loss_plot=True, save_model=True)

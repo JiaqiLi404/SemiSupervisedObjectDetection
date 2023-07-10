@@ -94,19 +94,19 @@ class SegFormerModel(nn.Module):
             if token_num_per_block[i] == 0:
                 continue
             self.model.segformer.encoder.cls_token[i] = torch.rand(token_num_per_block[i],
-                                                                       self.model.config.hidden_sizes[i],
-                                                                       requires_grad=True).cuda()
+                                                                   self.model.config.hidden_sizes[i],
+                                                                   requires_grad=True).cuda()
 
         print('CLS tokens are added')
 
-    def predict(self, img, mask=None, isEval=True, use_loss='dice',output_cls_token=False):
+    def predict(self, img, mask=None, isEval=True, use_loss='dice', output_cls_token=False):
         if not isEval:
             self.model.eval()
         img = img.to(self.device)
         if mask is not None:
             mask = mask.to(self.device, dtype=torch.int64)
-        outputs,cls_tokens = self.model(pixel_values=img,
-                             labels=mask)  # logits are of shape (batch_size, num_labels, height/4, width/4)
+        outputs, cls_token = self.model(pixel_values=img,
+                                         labels=mask)  # logits are of shape (batch_size, num_labels, height/4, width/4)
         logits = outputs.logits
         size = list(img.shape)
 
@@ -130,7 +130,7 @@ class SegFormerModel(nn.Module):
             loss = self.loss_argmax_function(predict_masks, mask)
 
         if output_cls_token:
-            return loss, predict_masks,cls_tokens
+            return loss, predict_masks, cls_token
         return loss, predict_masks
 
     def eval_one_epoch(self, imgs, masks):  # return loss, predict_mask
@@ -138,11 +138,17 @@ class SegFormerModel(nn.Module):
         with torch.no_grad():
             return self.predict(imgs, masks, use_loss='argmax')
 
-    def train_one_epoch(self, imgs, masks, use_loss='dice'):  # return loss, predict_mask
+    def train_one_epoch(self, imgs, masks, use_loss='dice', output_cls_token=False):  # return loss, predict_mask
         self.model.train()
-        loss, predict_masks = self.predict(imgs, masks, isEval=False, use_loss=use_loss)
-        self.train_from_loss(loss)
-        return loss, predict_masks
+        if output_cls_token:
+            loss, predict_masks, cls_tokens = self.predict(imgs, masks, isEval=False, use_loss=use_loss,
+                                                           output_cls_token=True)
+            self.train_from_loss(loss)
+            return loss, predict_masks, cls_tokens
+        else:
+            loss, predict_masks = self.predict(imgs, masks, isEval=False, use_loss=use_loss, output_cls_token=False)
+            self.train_from_loss(loss)
+            return loss, predict_masks
 
     def train_from_loss(self, loss):
         self.optimizer.zero_grad()
@@ -167,7 +173,8 @@ class SegFormerModel(nn.Module):
         self.model.eval()
         with torch.no_grad():
             imgs = imgs.to(self.device)
-            outputs,_ = self.model(pixel_values=imgs)  # logits are of shape (batch_size, num_labels, height/4, width/4)
+            outputs, _ = self.model(
+                pixel_values=imgs)  # logits are of shape (batch_size, num_labels, height/4, width/4)
             logits = outputs.logits
             size = list(imgs.shape)
 
@@ -187,7 +194,7 @@ class SegFormerModel(nn.Module):
         self.model.train()
         # cuda tensor
         imgs = imgs.to(self.device)
-        outputs,_ = self.model(pixel_values=imgs)
+        outputs, _ = self.model(pixel_values=imgs)
 
         # logits = outputs.logits.cpu()
         logits = outputs.logits

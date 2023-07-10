@@ -478,6 +478,8 @@ class SegformerEncoder(nn.Module):
 
         if not return_dict:
             return tuple(v for v in [hidden_states, all_hidden_states, all_self_attentions] if v is not None)
+        if None in block_cls_layers:
+            block_cls_layers = None
         return BaseModelOutput(
             last_hidden_state=hidden_states,
             hidden_states=all_hidden_states,
@@ -706,13 +708,19 @@ class SegformerMLP(nn.Module):
     Linear Embedding.
     """
 
-    def __init__(self, config: SegformerConfig, input_dim):
+    def __init__(self, config: SegformerConfig, input_dim, cls_dim=None):
         super().__init__()
         self.proj = nn.Linear(input_dim, config.decoder_hidden_size)
+        if cls_dim is not None:
+            self.cls_proj = nn.Linear(cls_dim, config.decoder_hidden_size)
 
-    def forward(self, hidden_states: torch.Tensor):
+    def forward(self, hidden_states: torch.Tensor, cls_token=None):
         hidden_states = hidden_states.flatten(2).transpose(1, 2)
         hidden_states = self.proj(hidden_states)
+        if cls_token is not None:
+            cls_states = self.cls_proj(cls_token)
+            cls_states=cls_states.repeat(1,hidden_states.shape[1],1)
+            hidden_states=hidden_states+cls_states
         return hidden_states
 
 
@@ -722,7 +730,7 @@ class SegformerDecodeHead(SegformerPreTrainedModel):
         # linear layers which will unify the channel dimension of each of the encoder blocks to the same config.decoder_hidden_size
         mlps = []
         for i in range(config.num_encoder_blocks):
-            mlp = SegformerMLP(config, input_dim=config.hidden_sizes[i])
+            mlp = SegformerMLP(config, input_dim=config.hidden_sizes[i], cls_dim=512)
             mlps.append(mlp)
         self.linear_c = nn.ModuleList(mlps)
 
@@ -741,7 +749,7 @@ class SegformerDecodeHead(SegformerPreTrainedModel):
 
         self.config = config
 
-    def forward(self, encoder_hidden_states: torch.FloatTensor) -> torch.Tensor:
+    def forward(self, encoder_hidden_states: torch.FloatTensor, cls_token=None) -> torch.Tensor:
         batch_size = encoder_hidden_states[-1].shape[0]
 
         all_hidden_states = ()
@@ -754,7 +762,7 @@ class SegformerDecodeHead(SegformerPreTrainedModel):
 
             # unify channel dimension
             height, width = encoder_hidden_state.shape[2], encoder_hidden_state.shape[3]
-            encoder_hidden_state = mlp(encoder_hidden_state)
+            encoder_hidden_state = mlp(encoder_hidden_state, cls_token)
             encoder_hidden_state = encoder_hidden_state.permute(0, 2, 1)
             encoder_hidden_state = encoder_hidden_state.reshape(batch_size, -1, height, width)
             # upsample
@@ -837,7 +845,10 @@ class SegformerForSemanticSegmentation(SegformerPreTrainedModel):
 
         encoder_hidden_states = outputs.hidden_states if return_dict else outputs[1]
 
-        logits = self.decode_head(encoder_hidden_states)
+        if cls_token is not None:
+            activation_fn = nn.Sigmoid()
+            cls_token = activation_fn(cls_token[-1])
+        logits = self.decode_head(encoder_hidden_states, cls_token)
 
         loss = None
         if labels is not None:

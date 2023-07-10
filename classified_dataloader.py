@@ -89,4 +89,6 @@ class SitesLoader(DataLoader):
                                           pin_memory=self.config['pin_memory'],
                                           drop_last=self.config['drop_last']
                                           )
+    def reshuffle(self):
+        random.shuffle(self.dataset.id_list)
 
