@@ -61,6 +61,10 @@ class SegFormerModel(nn.Module):
                 param.requires_grad = False
         print('encoder is frozen')
 
+    def unfroze_encoder(self):
+        for param in self.model.segformer.encoder.block.parameters():
+            param.requires_grad = True
+
     def add_prompt_token(self, token_num_per_block=[10, 10, 10, 10], isSamePerLayer=True):
         '''
         example:
@@ -85,17 +89,23 @@ class SegFormerModel(nn.Module):
                                                                            requires_grad=True).cuda()
         print('prompt tokens are added')
 
-    def unfroze_encoder(self):
-        for param in self.model.segformer.encoder.block.parameters():
-            param.requires_grad = True
+    def add_cls_token(self, token_num_per_block=[1, 1, 1, 1]):
+        for i, layer in enumerate(token_num_per_block):
+            if token_num_per_block[i] == 0:
+                continue
+            self.model.segformer.encoder.cls_token[i] = torch.rand(token_num_per_block[i],
+                                                                       self.model.config.hidden_sizes[i],
+                                                                       requires_grad=True).cuda()
 
-    def predict(self, img, mask=None, isEval=True, use_loss='dice'):
+        print('CLS tokens are added')
+
+    def predict(self, img, mask=None, isEval=True, use_loss='dice',output_cls_token=False):
         if not isEval:
             self.model.eval()
         img = img.to(self.device)
         if mask is not None:
             mask = mask.to(self.device, dtype=torch.int64)
-        outputs = self.model(pixel_values=img,
+        outputs,cls_tokens = self.model(pixel_values=img,
                              labels=mask)  # logits are of shape (batch_size, num_labels, height/4, width/4)
         logits = outputs.logits
         size = list(img.shape)
@@ -119,6 +129,8 @@ class SegFormerModel(nn.Module):
         else:
             loss = self.loss_argmax_function(predict_masks, mask)
 
+        if output_cls_token:
+            return loss, predict_masks,cls_tokens
         return loss, predict_masks
 
     def eval_one_epoch(self, imgs, masks):  # return loss, predict_mask
@@ -155,7 +167,7 @@ class SegFormerModel(nn.Module):
         self.model.eval()
         with torch.no_grad():
             imgs = imgs.to(self.device)
-            outputs = self.model(pixel_values=imgs)  # logits are of shape (batch_size, num_labels, height/4, width/4)
+            outputs,_ = self.model(pixel_values=imgs)  # logits are of shape (batch_size, num_labels, height/4, width/4)
             logits = outputs.logits
             size = list(imgs.shape)
 
@@ -175,7 +187,7 @@ class SegFormerModel(nn.Module):
         self.model.train()
         # cuda tensor
         imgs = imgs.to(self.device)
-        outputs = self.model(pixel_values=imgs)
+        outputs,_ = self.model(pixel_values=imgs)
 
         # logits = outputs.logits.cpu()
         logits = outputs.logits

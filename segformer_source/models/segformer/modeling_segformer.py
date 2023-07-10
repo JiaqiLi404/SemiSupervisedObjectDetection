@@ -349,6 +349,7 @@ class SegformerLayer(nn.Module):
         # first residual connection (with stochastic depth)
         attention_output = self.drop_path(attention_output)
         hidden_states = attention_output + hidden_states
+        cls_token = hidden_states[:, :prompt_token_len, :]
         hidden_states = hidden_states[:, prompt_token_len:, :]
 
         mlp_output = self.mlp(self.layer_norm_2(hidden_states), height, width)
@@ -359,7 +360,7 @@ class SegformerLayer(nn.Module):
 
         outputs = (layer_output,) + outputs
 
-        return outputs
+        return outputs, cls_token
 
 
 class SegformerEncoder(nn.Module):
@@ -388,8 +389,10 @@ class SegformerEncoder(nn.Module):
         cur = 0
         # Prompt Tokens
         self.prompt_tokens = []
+        self.cls_token = []
         for i in range(config.num_encoder_blocks):
             self.prompt_tokens.append(None)
+            self.cls_token.append(None)
             # each block consists of layers
             layers = []
             # self.prompt_tokens.append()
@@ -428,15 +431,18 @@ class SegformerEncoder(nn.Module):
         batch_size = pixel_values.shape[0]
 
         hidden_states = pixel_values
+        block_cls_layers = []
         for idx, x in enumerate(zip(self.patch_embeddings, self.block, self.layer_norm)):
             embedding_layer, block_layer, norm_layer = x
             # first, obtain patch embeddings
             hidden_states, height, width = embedding_layer(hidden_states)
-
-            prompt_token_len = 0
+            block_cls_layers.append(None)
+            this_layer_cls_tokens = None
 
             # second, send embeddings through blocks
             for i, blk in enumerate(block_layer):
+                prompt_token_len = 0
+                # add prompt tokens to head
                 if self.prompt_tokens[idx] is not None:
                     if len(self.prompt_tokens[idx].shape) == 3:
                         this_layer_prompt_tokens = self.prompt_tokens[idx][i, :, :].unsqueeze(0)
@@ -445,7 +451,18 @@ class SegformerEncoder(nn.Module):
                     this_layer_prompt_tokens = this_layer_prompt_tokens.repeat(hidden_states.shape[0], 1, 1)
                     hidden_states = torch.cat((this_layer_prompt_tokens, hidden_states), dim=1)
                     prompt_token_len = this_layer_prompt_tokens.shape[1]
-                layer_outputs = blk(hidden_states, height, width, prompt_token_len, output_attentions)
+                # # add cls tokens to head
+                if self.cls_token[idx] is not None:
+                    if i == 0:
+                        this_layer_cls_tokens = self.cls_token[idx].unsqueeze(0)
+                        this_layer_cls_tokens = this_layer_cls_tokens.repeat(hidden_states.shape[0], 1, 1)
+                    hidden_states = torch.cat((this_layer_cls_tokens, hidden_states), dim=1)
+                    prompt_token_len = prompt_token_len + this_layer_cls_tokens.shape[1]
+                layer_outputs, cls_token = blk(hidden_states, height, width, prompt_token_len, output_attentions)
+                if self.cls_token[idx] is not None:
+                    this_layer_cls_tokens = cls_token[:, 0, :]
+                    this_layer_cls_tokens = this_layer_cls_tokens.unsqueeze(1)
+                    block_cls_layers[-1] = this_layer_cls_tokens
                 hidden_states = layer_outputs[0]
                 if output_attentions:
                     all_self_attentions = all_self_attentions + (layer_outputs[1],)
@@ -465,7 +482,7 @@ class SegformerEncoder(nn.Module):
             last_hidden_state=hidden_states,
             hidden_states=all_hidden_states,
             attentions=all_self_attentions,
-        )
+        ), block_cls_layers
 
 
 class SegformerPreTrainedModel(PreTrainedModel):
@@ -568,7 +585,7 @@ class SegformerModel(SegformerPreTrainedModel):
         )
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
-        encoder_outputs = self.encoder(
+        encoder_outputs, cls_tokens = self.encoder(
             pixel_values,
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
@@ -583,7 +600,7 @@ class SegformerModel(SegformerPreTrainedModel):
             last_hidden_state=sequence_output,
             hidden_states=encoder_outputs.hidden_states,
             attentions=encoder_outputs.attentions,
-        )
+        ), cls_tokens
 
 
 @add_start_docstrings(
@@ -811,7 +828,7 @@ class SegformerForSemanticSegmentation(SegformerPreTrainedModel):
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
         )
 
-        outputs = self.segformer(
+        outputs, cls_token = self.segformer(
             pixel_values,
             output_attentions=output_attentions,
             output_hidden_states=True,  # we need the intermediate hidden states
@@ -851,4 +868,4 @@ class SegformerForSemanticSegmentation(SegformerPreTrainedModel):
             logits=logits,
             hidden_states=outputs.hidden_states if output_hidden_states else None,
             attentions=outputs.attentions,
-        )
+        ), cls_token
