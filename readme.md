@@ -4,8 +4,9 @@
 
 This is the source code of our HKU Master Degree graduation project.
 The project aims to do the archaeological sites segmentation to the remote sensing images, and there are numerous
-challenges different from traditional object segmentation tasks.
-Our dataset can be downloaded at https://drive.google.com/drive/folders/1YyODJlOZvifnA3vXRuQgWSIMeumnnMbt?usp=sharing.
+challenges different from traditional object segmentation tasks, including large amount of unlabeled images, weakly
+supervised dataset, domain shift problem, etc.
+The dataset can be downloaded at https://drive.google.com/drive/folders/1YyODJlOZvifnA3vXRuQgWSIMeumnnMbt?usp=sharing.
 
 ## Running
 
@@ -49,7 +50,7 @@ transfer learning encoder and initial weight.
 - **main_vit_based(abandoned)** is the main functions to do traditional ViT-based segmentation, which is no longer used
   in the final report and replaced by SegFormer.
 
-## Code Entrances
+## Program Entrances
 
 - **baseline_segmentation.py** trains the CNN baseline models on our labeled
   dataset. [segmentation_models_pytorch library](https://github.com/qubvel/segmentation_models.pytorch) is used for
