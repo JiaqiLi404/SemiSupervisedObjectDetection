@@ -171,58 +171,57 @@ def compute_similarity(mat1, mat2):
     return torch.mean(similarity_loss(mat1, mat2))
 
 
-def train_autoencoder_iteration(model, category_dataloaders, category_dataloaders_iter, iteration_num):
-    for iter_i in range(iteration_num):
-        # randomly pick two categories
-        [category_1, category_2] = random.sample(list(range(len(category_dataloaders))), 2)
-        try:
-            category_1_img, _ = next(category_dataloaders_iter[category_1])
-        except StopIteration:
-            category_dataloaders_iter[category_1] = iter(category_dataloaders[category_1])
-            category_1_img, _ = next(category_dataloaders_iter[category_1])
+def train_autoencoder_iteration(model, category_dataloaders, category_dataloaders_iter):
+    # randomly pick two categories
+    [category_1, category_2] = random.sample(list(range(len(category_dataloaders))), 2)
+    try:
+        category_1_img, _ = next(category_dataloaders_iter[category_1])
+    except StopIteration:
+        category_dataloaders_iter[category_1] = iter(category_dataloaders[category_1])
+        category_1_img, _ = next(category_dataloaders_iter[category_1])
 
-        try:
-            category_2_img, _ = next(category_dataloaders_iter[category_2])
-        except StopIteration:
-            category_dataloaders_iter[category_2] = iter(category_dataloaders[category_2])
-            category_2_img, _ = next(category_dataloaders_iter[category_2])
+    try:
+        category_2_img, _ = next(category_dataloaders_iter[category_2])
+    except StopIteration:
+        category_dataloaders_iter[category_2] = iter(category_dataloaders[category_2])
+        category_2_img, _ = next(category_dataloaders_iter[category_2])
 
-        category_1_img = category_1_img.to(device=device, dtype=torch.float32)
-        category_2_img = category_2_img.to(device=device, dtype=torch.float32)
+    category_1_img = category_1_img.to(device=device, dtype=torch.float32)
+    category_2_img = category_2_img.to(device=device, dtype=torch.float32)
 
-        # supervised loss
-        category_1_loss, category_1_predicted, category_1_cls_token = model.predict(category_1_img, category_1_img,
-                                                                                    output_cls_token=True,
-                                                                                    isEval=False, use_loss='mse')
-        category_2_loss, category_2_predicted, category_2_cls_token = model.predict(category_2_img, category_2_img,
-                                                                                    output_cls_token=True,
-                                                                                    isEval=False, use_loss='mse')
+    # supervised loss
+    category_1_loss, category_1_predicted, category_1_cls_token = model.predict(category_1_img, category_1_img,
+                                                                                output_cls_token=True,
+                                                                                isEval=False, use_loss='mse')
+    category_2_loss, category_2_predicted, category_2_cls_token = model.predict(category_2_img, category_2_img,
+                                                                                output_cls_token=True,
+                                                                                isEval=False, use_loss='mse')
 
-        batch_size = min(category_1_cls_token.shape[0], category_2_cls_token.shape[0])
-        # inter-loss
-        inter_loss = compute_similarity(category_1_cls_token[:batch_size, :, :],
-                                        category_2_cls_token[:batch_size, :, :])
-        # intra-loss
-        intra_loss_1 = 1 - compute_similarity(category_1_cls_token[:batch_size // 2, :, :],
-                                              category_1_cls_token[-(batch_size // 2):, :, :])
-        intra_loss_2 = 1 - compute_similarity(category_2_cls_token[:batch_size // 2, :, :],
-                                              category_2_cls_token[-(batch_size // 2):, :, :])
-        # intra_loss = (intra_loss_1 + intra_loss_2) / 2
+    batch_size = min(category_1_cls_token.shape[0], category_2_cls_token.shape[0])
+    # inter-loss
+    inter_loss = compute_similarity(category_1_cls_token[:batch_size, :, :],
+                                    category_2_cls_token[:batch_size, :, :])
+    # intra-loss
+    intra_loss_1 = 1 - compute_similarity(category_1_cls_token[:batch_size // 2, :, :],
+                                          category_1_cls_token[-(batch_size // 2):, :, :])
+    intra_loss_2 = 1 - compute_similarity(category_2_cls_token[:batch_size // 2, :, :],
+                                          category_2_cls_token[-(batch_size // 2):, :, :])
+    # intra_loss = (intra_loss_1 + intra_loss_2) / 2
 
-        category_1_summation_loss = (category_1_loss + inter_loss + intra_loss_1) / 3
-        category_2_summation_loss = (category_2_loss + inter_loss + intra_loss_2) / 3
+    category_1_summation_loss = (category_1_loss + 100 * inter_loss + 100 * intra_loss_1) / 3
+    category_2_summation_loss = (category_2_loss + 100 * inter_loss + 100 * intra_loss_2) / 3
 
-        # intra_loss_1 = 0
-        # intra_loss_2 = 0
-        # inter_loss = 0
-        # category_1_summation_loss = category_1_loss
-        # category_2_summation_loss = category_2_loss
-        summation_loss = (category_1_summation_loss + category_2_summation_loss) / 2
-        return summation_loss, category_1_img, category_1_predicted, category_1_loss, category_2_loss, intra_loss_1, intra_loss_2, inter_loss
+    # intra_loss_1 = 0
+    # intra_loss_2 = 0
+    # inter_loss = 0
+    # category_1_summation_loss = category_1_loss
+    # category_2_summation_loss = category_2_loss
+    summation_loss = (category_1_summation_loss + category_2_summation_loss) / 2
+    return summation_loss, category_1_img, category_1_predicted, category_1_loss, category_2_loss, intra_loss_1, intra_loss_2, inter_loss
 
 
 def train_autoencoder(pretrain_weight, _lr, _weight_decay, _scheduler, category_dataloaders1, category_dataloaders2,
-                      eval_dataLoader, epoch_num=config.ModelConfig['epoch_num'], iteration_num=35, save_model=False,
+                      eval_dataLoader, epoch_num=config.ModelConfig['epoch_num'], iteration_num=36, save_model=False,
                       loss_plot=None):
     print('**************** Train *******************')
     print('lr: {0}'.format(_lr))
@@ -249,32 +248,31 @@ def train_autoencoder(pretrain_weight, _lr, _weight_decay, _scheduler, category_
         epoch_loss = []
         model.train()
 
-        category_1_summation_loss, category_1_img, category_1_predicted, category_1_loss, category_2_loss, intra_loss_1, intra_loss_2, inter_loss = train_autoencoder_iteration(
-            model,
-            category_dataloaders1,
-            category_dataloaders_1_iter,
-            iteration_num)
-        category_2_summation_loss, category_2_img, category_2_predicted, category_1_loss, category_2_loss, intra_loss_1, intra_loss_2, inter_loss = train_autoencoder_iteration(
-            model,
-            category_dataloaders2,
-            category_dataloaders_2_iter,
-            iteration_num)
-        summation_loss = (category_1_summation_loss + category_2_summation_loss) / 2
+        for iter_i in range(iteration_num):
+            category_1_summation_loss, category_1_img, category_1_predicted, category_1_loss, category_2_loss, intra_loss_1, intra_loss_2, inter_loss = train_autoencoder_iteration(
+                model,
+                category_dataloaders1,
+                category_dataloaders_1_iter)
+            category_2_summation_loss, category_2_img, category_2_predicted, category_1_loss, category_2_loss, intra_loss_1, intra_loss_2, inter_loss = train_autoencoder_iteration(
+                model,
+                category_dataloaders2,
+                category_dataloaders_2_iter)
+            summation_loss = (category_1_summation_loss + category_2_summation_loss) / 2
 
-        model.train_from_loss(summation_loss)
-        epoch_loss.append(float(summation_loss))
+            model.train_from_loss(summation_loss)
+            epoch_loss.append(float(summation_loss))
 
-        # show results
-        if len(epoch_loss) % 1 == 0:
-            model.show_mask(vis_train, category_1_img[0], None, "Ground Truth")
-            model.show_mask(vis_train, category_1_predicted[0].detach(), None, "Predicted")
-            print(
-                "summation loss:{0:.3f} cat_1_sum_loss:{1:.3f} cat_1_cls_loss:{2:.3f} cat_1_intra_loss:{3:.3f} inter_loss:{4:.3f}".format(
-                    epoch_loss[-1], category_1_summation_loss, category_1_loss, intra_loss_1, inter_loss))
-            print(
-                "summation loss:{0:.3f} cat_2_sum_loss:{1:.3f} cat_2_cls_loss:{2:.3f} cat_2_intra_loss:{3:.3f} inter_loss:{4:.3f}".format(
-                    epoch_loss[-1], category_2_summation_loss, category_2_loss, intra_loss_2, inter_loss))
-            print(' ')
+            # show results
+            if len(epoch_loss) % 5 == 0:
+                model.show_mask(vis_train, category_1_img[0], None, "Ground Truth")
+                model.show_mask(vis_train, category_1_predicted[0].detach(), None, "Predicted")
+                print(
+                    "summation loss:{0:.3f} cat_1_sum_loss:{1:.3f} cat_1_cls_loss:{2:.3f} cat_1_intra_loss:{3:.3f} inter_loss:{4:.3f}".format(
+                        epoch_loss[-1], category_1_summation_loss, category_1_loss, intra_loss_1, inter_loss))
+                print(
+                    "summation loss:{0:.3f} cat_2_sum_loss:{1:.3f} cat_2_cls_loss:{2:.3f} cat_2_intra_loss:{3:.3f} inter_loss:{4:.3f}".format(
+                        epoch_loss[-1], category_2_summation_loss, category_2_loss, intra_loss_2, inter_loss))
+                print(' ')
 
         train_loss = sum(epoch_loss) / iteration_num
         loss_path_train.append(train_loss)
@@ -367,20 +365,21 @@ if __name__ == '__main__':
         batch_sum_labeled, batch_sum_unlabeled, len(eval_dataLoader)))
 
     best_loss = 100
-    for (_lr, _weight_decay, _scheduler) in hyperparameters_sets[:18]:
-        loss = train_autoencoder(None, _lr, _weight_decay, _scheduler, category_loaders_labeled,
-                                 category_loaders_unlabeled, eval_dataLoader, epoch_num=20,
-                                 loss_plot=True, save_model=False)
-        print(
-            "    Model loss (hyperparameter tunning) for lr={0}: {1:.4f}".format(_lr, loss))
-        if loss < best_loss:
-            best_loss = loss
-            best_hyperparameters = {
-                "lr": _lr,
-                "weight_decay": _weight_decay,
-                "scheduler": _scheduler,
-            }
+    # for (_lr, _weight_decay, _scheduler) in hyperparameters_sets[:18]:
+    #     loss = train_autoencoder(None, _lr, _weight_decay, _scheduler, category_loaders_labeled,
+    #                              category_loaders_unlabeled, eval_dataLoader, epoch_num=20,
+    #                              loss_plot=True, save_model=False)
+    #     print(
+    #         "    Model loss (hyperparameter tunning) for lr={0}: {1:.4f}".format(_lr, loss))
+    #     if loss < best_loss:
+    #         best_loss = loss
+    #         best_hyperparameters = {
+    #             "lr": _lr,
+    #             "weight_decay": _weight_decay,
+    #             "scheduler": _scheduler,
+    #         }
 
-    # loss = train(None, best_hyperparameters['lr'], best_hyperparameters['weight_decay'],
-    #              best_hyperparameters['scheduler'], category_loaders_labeled, eval_dataLoader, epoch_num=80,
-    #              loss_plot=True, save_model=True)
+    loss = train_autoencoder(None, best_hyperparameters['lr'], best_hyperparameters['weight_decay'],
+                             best_hyperparameters['scheduler'], category_loaders_labeled, category_loaders_unlabeled,
+                             eval_dataLoader, epoch_num=200,
+                             loss_plot=True, save_model=True)
