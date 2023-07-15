@@ -105,8 +105,10 @@ class SegFormerModel(nn.Module):
         img = img.to(self.device)
         if mask is not None:
             mask = mask.to(self.device, dtype=torch.int64)
-        outputs, cls_token = self.model(pixel_values=img,
-                                         labels=mask)  # logits are of shape (batch_size, num_labels, height/4, width/4)
+        if use_loss == 'bce':
+            outputs, cls_token = self.model(pixel_values=img, labels=mask)
+        else:
+            outputs, cls_token = self.model(pixel_values=img)
         logits = outputs.logits
         size = list(img.shape)
 
@@ -126,6 +128,8 @@ class SegFormerModel(nn.Module):
             loss = self.loss_function(predict_masks, mask)
         elif use_loss == 'bce':
             loss = outputs.loss
+        elif use_loss == 'mse':
+            loss = self.mse_loss_function(img, upsampled_logits)
         else:
             loss = self.loss_argmax_function(predict_masks, mask)
 

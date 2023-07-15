@@ -44,7 +44,7 @@ class SitesClassified(Dataset):
         mask_name = file_id + 'bing_mask.png'
         image = imread(os.path.join(self.data_dir, file_name))
         image = image[:-23, :, 0:3]  # delete the alpha dimension in png files and bing flag
-        mask_image = None
+        mask_image = []
         if not self.unlabeled:
             mask_image = imread(os.path.join(self.mask_dir, mask_name))
             mask_image = mask_image[:-23, :, 0:3]  # delete the alpha dimension in png file
