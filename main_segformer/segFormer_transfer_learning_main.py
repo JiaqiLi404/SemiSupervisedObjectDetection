@@ -186,7 +186,7 @@ if __name__ == '__main__':
                                                                                          best_hyperparameters[
                                                                                              'frozen']))
 
-    model = SegFormerModel(pretrain_weight='segFormer_autoencoder_epoch_28_train_19.970_eval_17.657_fps_3.10.pth',
+    model = SegFormerModel(pretrain_weight='few-shot seg-former epoch 174 train 142.893 eval 7.715 fps 3.67.pth',
                            lr=best_hyperparameters['lr'], weight_decay=best_hyperparameters['weight_decay'],
                            scheduler=best_hyperparameters['scheduler'])
     model.frozen_encoder(layers=best_hyperparameters['frozen'])

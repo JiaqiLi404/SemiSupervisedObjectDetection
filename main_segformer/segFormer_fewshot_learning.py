@@ -208,8 +208,8 @@ def train_autoencoder_iteration(model, category_dataloaders, category_dataloader
                                           category_2_cls_token[-(batch_size // 2):, :, :])
     # intra_loss = (intra_loss_1 + intra_loss_2) / 2
 
-    category_1_summation_loss = (category_1_loss + 100 * inter_loss + 100 * intra_loss_1) / 3
-    category_2_summation_loss = (category_2_loss + 100 * inter_loss + 100 * intra_loss_2) / 3
+    category_1_summation_loss = category_1_loss + 100 * inter_loss + 100 * intra_loss_1
+    category_2_summation_loss = category_2_loss + 100 * inter_loss + 100 * intra_loss_2
 
     # intra_loss_1 = 0
     # intra_loss_2 = 0
@@ -221,7 +221,7 @@ def train_autoencoder_iteration(model, category_dataloaders, category_dataloader
 
 
 def train_autoencoder(pretrain_weight, _lr, _weight_decay, _scheduler, category_dataloaders1, category_dataloaders2,
-                      eval_dataLoader, epoch_num=config.ModelConfig['epoch_num'], iteration_num=36, save_model=False,
+                      eval_dataLoader, epoch_num=config.ModelConfig['epoch_num'], iteration_num=101, save_model=False,
                       loss_plot=None):
     print('**************** Train *******************')
     print('lr: {0}'.format(_lr))
@@ -263,7 +263,7 @@ def train_autoencoder(pretrain_weight, _lr, _weight_decay, _scheduler, category_
             epoch_loss.append(float(summation_loss))
 
             # show results
-            if len(epoch_loss) % 5 == 0:
+            if len(epoch_loss) % 20 == 0:
                 model.show_mask(vis_train, category_1_img[0], None, "Ground Truth")
                 model.show_mask(vis_train, category_1_predicted[0].detach(), None, "Predicted")
                 print(
@@ -317,7 +317,7 @@ def train_autoencoder(pretrain_weight, _lr, _weight_decay, _scheduler, category_
         plt.title('Loss Performance for Few-Shot Learning')
         plt.xlabel('epoch')
         plt.ylabel('loss')
-        plt.ylim((0, 1))
+        plt.ylim((0, 500))
         plt.plot(range(len(loss_path_train)), loss_path_train, color='blue', label='train')
         plt.plot(range(len(loss_path_eval)), loss_path_eval, color='yellow', label='eval')
         plt.legend()
@@ -379,7 +379,8 @@ if __name__ == '__main__':
     #             "scheduler": _scheduler,
     #         }
 
-    loss = train_autoencoder(None, best_hyperparameters['lr'], best_hyperparameters['weight_decay'],
+    loss = train_autoencoder(None,
+                             best_hyperparameters['lr'], best_hyperparameters['weight_decay'],
                              best_hyperparameters['scheduler'], category_loaders_labeled, category_loaders_unlabeled,
                              eval_dataLoader, epoch_num=200,
                              loss_plot=True, save_model=True)
