@@ -164,10 +164,10 @@ if __name__ == '__main__':
 
     # set hyperparameter list
     best_hyperparameters = {
-        "lr": 5e-5,
+        "lr": 4e-5,
         "weight_decay": 5e-5,
         "scheduler": 0.97,
-        'frozen': [0, 1]
+        'frozen': [0,1]
     }
     # best_hyperparameters = Hyperparameter_Tuning(lr=[15e-5, 5e-5, 10e-6, 5e-6, 1e-6], weight_decay=[5e-5],
     #                                              scheduler=[0.97],

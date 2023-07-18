@@ -335,7 +335,7 @@ if __name__ == '__main__':
 
     similarity_loss = torch.nn.CosineSimilarity(dim=1)
 
-    # set hyperparameter list
+    # set hyperparameter list : 5e-5
     best_hyperparameters = {
         "lr": 2e-5,
         "weight_decay": 5e-5,
@@ -379,8 +379,9 @@ if __name__ == '__main__':
     #             "scheduler": _scheduler,
     #         }
 
-    loss = train_autoencoder(None,
-                             best_hyperparameters['lr'], best_hyperparameters['weight_decay'],
-                             best_hyperparameters['scheduler'], category_loaders_labeled, category_loaders_unlabeled,
-                             eval_dataLoader, epoch_num=200,
-                             loss_plot=True, save_model=True)
+    # loss = train_autoencoder(None,
+    #                          best_hyperparameters['lr'], best_hyperparameters['weight_decay'],
+    #                          best_hyperparameters['scheduler'], category_loaders_labeled, category_loaders_unlabeled,
+    #                          eval_dataLoader, epoch_num=200,
+    #                          loss_plot=True, save_model=True)
+    train()
