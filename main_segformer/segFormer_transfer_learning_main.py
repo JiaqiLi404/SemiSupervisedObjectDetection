@@ -18,20 +18,21 @@ visdom_display_freq = 5  # send image to visdom every 5 epoch
 
 # python -m visdom.server
 
-def Prediction():
-    unlabel_dataLoader = archaeological_georgia_biostyle_dataloader \
-        .SitesLoader(config.DataLoaderConfig, flag="unlabeled")
-    model = SegFormerModel()  # with pre-trained weight
+def Prediction(pretrain_weight):
+    model = SegFormerModel(lr=best_hyperparameters['lr'], weight_decay=best_hyperparameters['weight_decay'],
+                           scheduler=best_hyperparameters['scheduler'])
+    model.frozen_encoder(layers=best_hyperparameters['frozen'])
+    model.add_prompt_token([10, 10, 10, 10])
+    model.load_state_dict(torch.load(os.path.join('../checkpoints', pretrain_weight),
+                                                 map_location=torch.device(device)), strict=False)
     model.eval()
-    with torch.no_gard():
-        dataPatches = 0
-        for img, _, _, _ in unlabel_dataLoader:
-            predict_mask = model.predict(
-                img=img)  # logits are of shape (batch_size, num_labels, height/4, width/4)
-            dataPatches += 1
-            if dataPatches % visdom_display_freq == 0:
-                model.show_mask(vis_pred, img[0], None, title="Raw Image {0}".format(dataPatches))
-                model.show_mask(vis_pred, img[0], predict_mask[0], title="Predicted Mask epoch{0}".format(dataPatches))
+    for img, mask, _, _ in eval_dataLoader:
+        # forward
+        loss, predict_mask = model.eval_one_epoch(imgs=img, masks=mask)
+
+        for img_i in range(img.shape[0]):
+            model.show_mask(vis_eval, img[img_i], mask[img_i], title="Ground Truth")
+            model.show_mask(vis_eval, img[img_i], predict_mask[img_i].detach(), title="Recovered Image")
 
 
 def Train(model, train_dataloader, eval_dataLoader, epoch_num=config.ModelConfig['epoch_num'],
@@ -191,5 +192,6 @@ if __name__ == '__main__':
                            scheduler=best_hyperparameters['scheduler'])
     model.frozen_encoder(layers=best_hyperparameters['frozen'])
     model.add_prompt_token([10, 10, 10, 10])
-    Train(model, label_dataLoader, eval_dataLoader, save_model=True,
-          loss_plot="Loss Performance of SegFormer transfer")
+    # Train(model, label_dataLoader, eval_dataLoader, save_model=True,
+    #       loss_plot="Loss Performance of SegFormer transfer")
+    Prediction('ae pretraining segFormer_epoch_48_train_0.114_eval_0.351_fps_0.65.pth')

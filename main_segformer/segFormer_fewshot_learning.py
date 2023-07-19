@@ -24,6 +24,23 @@ visdom_display_freq = 5  # send image to visdom every 5 epoch
 
 # python -m visdom.server
 
+def prediction(weight):
+    model = SegModel(weight, lr=best_hyperparameters['lr'],
+                     weight_decay=best_hyperparameters['weight_decay'],
+                     scheduler=best_hyperparameters['scheduler'])
+    model.add_cls_token()
+    for img, mask, _, _ in eval_dataLoader:
+        img = img.to(device=device, dtype=torch.float32)
+        real_mask = mask.to(device=device, dtype=torch.float32)
+
+        loss, predict_mask = model.eval_one_epoch(imgs=img, masks=real_mask)
+
+        # show the image to Visdom
+        for img_i in range(img.shape[0]):
+            model.show_mask(vis_eval, img[img_i], mask[img_i], title="Ground Truth")
+            model.show_mask(vis_eval, img[img_i], predict_mask[img_i], "Predicted")
+
+
 def train(pretrain_weight, _lr, _weight_decay, _scheduler, category_dataloaders, eval_dataLoader,
           epoch_num=config.ModelConfig['epoch_num'], iteration_num=35, save_model=False, loss_plot=None):
     print('**************** Train *******************')
@@ -379,9 +396,16 @@ if __name__ == '__main__':
     #             "scheduler": _scheduler,
     #         }
 
+    # # train the domain prompt autoencoder
     # loss = train_autoencoder(None,
     #                          best_hyperparameters['lr'], best_hyperparameters['weight_decay'],
     #                          best_hyperparameters['scheduler'], category_loaders_labeled, category_loaders_unlabeled,
     #                          eval_dataLoader, epoch_num=200,
     #                          loss_plot=True, save_model=True)
-    train()
+    #
+    # # train the improved SegFormer
+    # train(None, best_hyperparameters['lr'], best_hyperparameters['weight_decay'], best_hyperparameters['scheduler'],
+    #       category_loaders_labeled, eval_dataLoader, loss_plot=True, save_model=True)
+
+    # prediction('few-shot without cls loss seg-former epoch 24 train 0.078 eval 0.308 fps 2.71.pth')
+    prediction('segFormer_epoch_38_train_0.160_eval_0.330_fps_4.34.pth')

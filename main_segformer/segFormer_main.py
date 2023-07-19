@@ -1,5 +1,6 @@
 import os.path
 import sys
+
 sys.path.append('../')
 import archaeological_georgia_biostyle_dataloader
 import torch
@@ -17,20 +18,18 @@ visdom_display_freq = 5  # send image to visdom every 5 epoch
 
 # python -m visdom.server
 
-def Prediction():
-    unlabel_dataLoader = archaeological_georgia_biostyle_dataloader \
-        .SitesLoader(config.DataLoaderConfig, flag="unlabeled")
-    model = SegFormerModel()  # with pre-trained weight
+def Prediction(weight, eval_dataLoader):
+    model = SegFormerModel(pretrain_weight=weight, lr=best_hyperparameters['lr'],
+                           weight_decay=best_hyperparameters['weight_decay'],
+                           scheduler=best_hyperparameters['scheduler'])
     model.eval()
-    with torch.no_gard():
-        dataPatches = 0
-        for img, _, _, _ in unlabel_dataLoader:
-            predict_mask = model.predict(
-                img=img)  # logits are of shape (batch_size, num_labels, height/4, width/4)
-            dataPatches += 1
-            if dataPatches % visdom_display_freq == 0:
-                model.show_mask(vis_pred, img[0], None, title="Raw Image {0}".format(dataPatches))
-                model.show_mask(vis_pred, img[0], predict_mask[0], title="Predicted Mask epoch{0}".format(dataPatches))
+    for img, mask, _, _ in eval_dataLoader:
+        # forward
+        loss, predict_mask = model.eval_one_epoch(imgs=img, masks=mask)
+
+        for img_i in range(img.shape[0]):
+            model.show_mask(vis_eval, img[img_i], mask[img_i], title="Ground Truth")
+            model.show_mask(vis_eval, img[img_i], predict_mask[img_i].detach(), title="Recovered Image")
 
 
 def Train(model, train_dataloader, eval_dataLoader, epoch_num=config.ModelConfig['epoch_num'],
@@ -70,7 +69,7 @@ def Train(model, train_dataloader, eval_dataLoader, epoch_num=config.ModelConfig
                 if len(eval_epoch_loss) % visdom_display_freq == 0:
                     model.show_mask(vis_eval, img[0], mask[0], title="Ground Truth")
                     model.show_mask(vis_eval, img[0], predict_mask[0], title="Predicted Mask epoch {0}".format(epoch_i))
-        eval_loss = sum(eval_epoch_loss)/ len(eval_dataLoader)
+        eval_loss = sum(eval_epoch_loss) / len(eval_dataLoader)
         eval_loss_path.append(eval_loss)
         fps = len(eval_dataLoader) / (time.time() - s_time)
 
@@ -170,6 +169,7 @@ if __name__ == '__main__':
 
     model = SegFormerModel(lr=best_hyperparameters['lr'], weight_decay=best_hyperparameters['weight_decay'],
                            scheduler=best_hyperparameters['scheduler'])
-    Train(model, label_dataLoader, eval_dataLoader, save_model=True,
-          loss_plot="Loss Performance of SegFormer")
-
+    # Train(model, label_dataLoader, eval_dataLoader, save_model=True,
+    #       loss_plot="Loss Performance of SegFormer")
+    # Prediction('argmax_loss segFormer_epoch_36_train_0.103_eval_0.326_fps_0.90.pth', eval_dataLoader)
+    Prediction('argmax_loss&denoise self-pseudo seg-former student epoch 34 train 0.154 eval 0.305 fps 0.86.pth', eval_dataLoader)

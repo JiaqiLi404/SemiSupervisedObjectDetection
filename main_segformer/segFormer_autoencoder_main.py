@@ -20,20 +20,18 @@ visdom_display_freq = 10  # send image to visdom every 5 epoch
 
 # python -m visdom.server
 
-def Prediction():
-    unlabel_dataLoader = archaeological_georgia_biostyle_dataloader \
-        .SitesLoader(config.DataLoaderConfig, flag="unlabeled")
-    model = SegFormerModel()  # with pre-trained weight
-    model.eval()
-    with torch.no_gard():
-        dataPatches = 0
-        for img, _, _, _ in unlabel_dataLoader:
-            predict_mask = model.predict(
-                img=img)  # logits are of shape (batch_size, num_labels, height/4, width/4)
-            dataPatches += 1
-            if dataPatches % visdom_display_freq == 0:
-                model.show_mask(vis_pred, img[0], None, title="Raw Image {0}".format(dataPatches))
-                model.show_mask(vis_pred, img[0], predict_mask[0], title="Predicted Mask epoch{0}".format(dataPatches))
+def Prediction(weight,eval_dataLoader):
+    model = SegFormerModel(pretrain_weight=weight,lr=best_hyperparameters['lr'],
+                           weight_decay=best_hyperparameters['weight_decay'],
+                           scheduler=best_hyperparameters['scheduler'], num_labels=3)
+    for img, _, _, _ in eval_dataLoader:
+        # forward
+        loss, recovery = model.eval_one_epoch_without_mask(imgs=img)
+
+        for img_i in range(img.shape[0]):
+            model.show_mask(vis_eval, img[img_i], None, title="Ground Truth")
+            model.show_mask(vis_eval, recovery[img_i].detach(), None,
+                            title="Recovered Image")
 
 
 def Train(model, train_dataloader, eval_dataLoader, train_unlabel_dataloader, eval_unlabel_dataloader,
@@ -220,6 +218,7 @@ if __name__ == '__main__':
     model = SegFormerModel(lr=best_hyperparameters['lr'],
                            weight_decay=best_hyperparameters['weight_decay'],
                            scheduler=best_hyperparameters['scheduler'], num_labels=3)
-    Train(model, label_dataLoader, eval_dataLoader, train_unlabel_dataloader, validation_unlabel_dataloader,
-          save_model=True,
-          loss_plot="Loss Performance of SegFormer Autoencoder", epoch_num=50)
+    # Train(model, label_dataLoader, eval_dataLoader, train_unlabel_dataloader, validation_unlabel_dataloader,
+    #       save_model=True,
+    #       loss_plot="Loss Performance of SegFormer Autoencoder", epoch_num=50)
+    Prediction('segFormer_autoencoder_epoch_28_train_19.970_eval_17.657_fps_3.10.pth',eval_dataLoader)
