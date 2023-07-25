@@ -216,12 +216,12 @@ def train_autoencoder_iteration(model, category_dataloaders, category_dataloader
 
     batch_size = min(category_1_cls_token.shape[0], category_2_cls_token.shape[0])
     # inter-loss
-    inter_loss = compute_similarity(category_1_cls_token[:batch_size, :, :],
+    inter_loss = 0.5 + 0.5*compute_similarity(category_1_cls_token[:batch_size, :, :],
                                     category_2_cls_token[:batch_size, :, :])
     # intra-loss
-    intra_loss_1 = 1 - compute_similarity(category_1_cls_token[:batch_size // 2, :, :],
+    intra_loss_1 = 0.5 - 0.5*compute_similarity(category_1_cls_token[:batch_size // 2, :, :],
                                           category_1_cls_token[-(batch_size // 2):, :, :])
-    intra_loss_2 = 1 - compute_similarity(category_2_cls_token[:batch_size // 2, :, :],
+    intra_loss_2 = 0.5 - 0.5*compute_similarity(category_2_cls_token[:batch_size // 2, :, :],
                                           category_2_cls_token[-(batch_size // 2):, :, :])
     # intra_loss = (intra_loss_1 + intra_loss_2) / 2
 
@@ -396,16 +396,16 @@ if __name__ == '__main__':
     #             "scheduler": _scheduler,
     #         }
 
-    # # train the domain prompt autoencoder
-    # loss = train_autoencoder(None,
-    #                          best_hyperparameters['lr'], best_hyperparameters['weight_decay'],
-    #                          best_hyperparameters['scheduler'], category_loaders_labeled, category_loaders_unlabeled,
-    #                          eval_dataLoader, epoch_num=200,
-    #                          loss_plot=True, save_model=True)
+    # train the domain prompt autoencoder
+    loss = train_autoencoder(None,
+                             best_hyperparameters['lr'], best_hyperparameters['weight_decay'],
+                             best_hyperparameters['scheduler'], category_loaders_labeled, category_loaders_unlabeled,
+                             eval_dataLoader, epoch_num=200,
+                             loss_plot=True, save_model=True)
     #
     # # train the improved SegFormer
     # train(None, best_hyperparameters['lr'], best_hyperparameters['weight_decay'], best_hyperparameters['scheduler'],
     #       category_loaders_labeled, eval_dataLoader, loss_plot=True, save_model=True)
 
     # prediction('few-shot without cls loss seg-former epoch 24 train 0.078 eval 0.308 fps 2.71.pth')
-    prediction('segFormer_epoch_38_train_0.160_eval_0.330_fps_4.34.pth')
+    # prediction('few-shot autoencoder prompt tuning segFormer_epoch_38_train_0.160_eval_0.330_fps_4.34.pth')

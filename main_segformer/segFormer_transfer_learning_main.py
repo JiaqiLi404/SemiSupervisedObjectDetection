@@ -24,7 +24,7 @@ def Prediction(pretrain_weight):
     model.frozen_encoder(layers=best_hyperparameters['frozen'])
     model.add_prompt_token([10, 10, 10, 10])
     model.load_state_dict(torch.load(os.path.join('../checkpoints', pretrain_weight),
-                                                 map_location=torch.device(device)), strict=False)
+                                     map_location=torch.device(device)), strict=False)
     model.eval()
     for img, mask, _, _ in eval_dataLoader:
         # forward
@@ -97,13 +97,14 @@ def Train(model, train_dataloader, eval_dataLoader, epoch_num=config.ModelConfig
         plt.plot(range(len(train_loss_path)), train_loss_path, color='blue', label='train')
         plt.plot(range(len(eval_loss_path)), eval_loss_path, color='yellow', label='eval')
         plt.legend()
-        plt.savefig(os.path.join('{0}/figures'.format(root_path), 'ae_pretraining'+"_".join(loss_plot.split(" ")) + ".png"))
+        plt.savefig(
+            os.path.join('{0}/figures'.format(root_path), 'ae_pretraining' + "_".join(loss_plot.split(" ")) + ".png"))
         plt.show()
 
     return best_loss, best_epoch
 
 
-def Hyperparameter_Tuning(lr, weight_decay, scheduler, frozen, epochs=15):
+def Hyperparameter_Tuning(lr, weight_decay, scheduler, frozen, tokens,epochs=50):
     label_dataset = archaeological_georgia_biostyle_dataloader.SitesBingBook(config.DataLoaderConfig["dataset"],
                                                                              config.DataLoaderConfig["maskdir"],
                                                                              config.DataLoaderConfig["transforms"])
@@ -130,29 +131,31 @@ def Hyperparameter_Tuning(lr, weight_decay, scheduler, frozen, epochs=15):
         for _weight_decay in weight_decay:
             for _scheduler in scheduler:
                 for _frozen in frozen:
-                    print(
-                        "Training model (hyperparameter tunning) for lr={0}, weight_decay={1}, scheduler={2}, frozen={3}"
-                        .format(_lr, _weight_decay, _scheduler, _frozen))
-                    model = SegFormerModel(
-                        pretrain_weight=None,
-                        lr=_lr, weight_decay=_weight_decay, scheduler=_scheduler)
-                    model.frozen_encoder(layers=_frozen)
-                    model.add_prompt_token([10, 10, 10, 10])
-                    loss, trained_epoch = Train(model, train_dataloader, validation_dataloader,
-                                                epoch_num=epochs, save_model=False,
-                                                loss_plot="lr-{0} weight_decay-{1} scheduler-{2} frozen-{3}"
-                                                .format(_lr, _weight_decay, _scheduler, _frozen))
-                    print(
-                        "    Model loss (hyperparameter tunning) for lr={0}, weight_decay={1}, scheduler={2}, frozen={3}: {4:.4f}".format(
-                            _lr, _weight_decay, _scheduler, _frozen, loss))
-                    if loss < best_loss:
-                        best_loss = loss
-                        best_hyperparameters = {
-                            "lr": _lr,
-                            "weight_decay": _weight_decay,
-                            "scheduler": _scheduler,
-                            'frozen': _frozen
-                        }
+                    for _tokens in tokens:
+                        print(
+                            "Training model (hyperparameter tunning) for lr={0}, weight_decay={1}, scheduler={2}, frozen={3}"
+                            .format(_lr, _weight_decay, _scheduler, _frozen))
+                        model = SegFormerModel(
+                            pretrain_weight='few-shot autoencoder seg-former epoch 174 train 142.893 eval 7.715 fps 3.67.pth',
+                            lr=_lr, weight_decay=_weight_decay, scheduler=_scheduler)
+                        model.frozen_encoder(layers=_frozen)
+                        model.add_prompt_token([_tokens, _tokens, _tokens, _tokens])
+                        loss, trained_epoch = Train(model, train_dataloader, validation_dataloader,
+                                                    epoch_num=epochs, save_model=False,
+                                                    loss_plot="lr-{0} weight_decay-{1} scheduler-{2} frozen-{3} tokens-{4}"
+                                                    .format(_lr, _weight_decay, _scheduler, _frozen,_tokens))
+                        print(
+                            "    Model loss (hyperparameter tunning) for lr={0}, weight_decay={1}, scheduler={2}, frozen={3}, tokens={4}: {5:.4f}".format(
+                                _lr, _weight_decay, _scheduler, _frozen,_tokens, loss))
+                        if loss < best_loss:
+                            best_loss = loss
+                            best_hyperparameters = {
+                                "lr": _lr,
+                                "weight_decay": _weight_decay,
+                                "scheduler": _scheduler,
+                                'frozen': _frozen,
+                                'tokens':_tokens
+                            }
 
     return best_hyperparameters
 
@@ -168,11 +171,17 @@ if __name__ == '__main__':
         "lr": 4e-5,
         "weight_decay": 5e-5,
         "scheduler": 0.97,
-        'frozen': [0,1]
+        'frozen': [0, 1],
+        'tokens': [10]
     }
     # best_hyperparameters = Hyperparameter_Tuning(lr=[15e-5, 5e-5, 10e-6, 5e-6, 1e-6], weight_decay=[5e-5],
     #                                              scheduler=[0.97],
-    #                                              frozen=[[0], [1], [2], [3], [0, 1], [0, 2], [1, 2], [1, 3]])
+    #                                              frozen=[[0], [1], [2], [3], [0, 1], [0, 2], [1, 2], [1, 3]],
+    #                                              tokens=[1,10,100])
+    best_hyperparameters = Hyperparameter_Tuning(lr=[4e-5], weight_decay=[5e-5],
+                                                 scheduler=[0.97],
+                                                 frozen=[[0, 1]],
+                                                 tokens=[1,10,100])
 
     label_dataLoader = archaeological_georgia_biostyle_dataloader.SitesLoader(config.DataLoaderConfig, flag="train")
     eval_dataLoader = archaeological_georgia_biostyle_dataloader.SitesLoader(config.DataLoaderConfig, flag="eval")
@@ -187,11 +196,13 @@ if __name__ == '__main__':
                                                                                          best_hyperparameters[
                                                                                              'frozen']))
 
-    model = SegFormerModel(pretrain_weight='few-shot seg-former epoch 174 train 142.893 eval 7.715 fps 3.67.pth',
+    model = SegFormerModel(pretrain_weight='few-shot autoencoder seg-former epoch 174 train 142.893 eval 7.715 fps 3.67.pth',
                            lr=best_hyperparameters['lr'], weight_decay=best_hyperparameters['weight_decay'],
                            scheduler=best_hyperparameters['scheduler'])
     model.frozen_encoder(layers=best_hyperparameters['frozen'])
-    model.add_prompt_token([10, 10, 10, 10])
-    # Train(model, label_dataLoader, eval_dataLoader, save_model=True,
-    #       loss_plot="Loss Performance of SegFormer transfer")
+    model.add_prompt_token(
+        [best_hyperparameters['tokens'], best_hyperparameters['tokens'], best_hyperparameters['tokens'],
+         best_hyperparameters['tokens']])
+    Train(model, label_dataLoader, eval_dataLoader, save_model=True,
+          loss_plot="Loss Performance of SegFormer transfer")
     Prediction('ae pretraining segFormer_epoch_48_train_0.114_eval_0.351_fps_0.65.pth')
